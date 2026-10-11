@@ -52,6 +52,7 @@ const VIEWS = [
   { id: 'system', t: ['성과 발굴체계와', '기준'], sub: '50년 투입 포트폴리오, 투자 대비 성과 발굴체계(S1~S6)와 세부기준(C1~C6), 투웨이 하이브리드, 선정위원회 검증을 다룹니다.' },
   { id: 'outcomes', t: ['대표 성과', '50선'], sub: '성과관 · 기초·원천연구에서 산업·사회 활용까지의 영향경로를 복원하고, 재단 지원이 작용한 방식을 4대 기여 유형으로 체계화합니다.', kind: 'o' },
   { id: 'people', t: ['대표 연구자', '50인'], sub: '인물관 · 학문후속세대에서 신진·중견·리더로 이어지는 생애주기 성장 궤적과 전환점·연속성·확산을 분석합니다.', kind: 'p' },
+  { id: 'network', t: ['연구', '네트워크'], sub: '대표 성과와 대표 연구자가 서로 어떻게 이어져 있는지 그래프로 탐색합니다. 성과–연구자 연계, 공동연구, 인용·후속과제 계보, 사제 관계를 한 화면에서 봅니다.' },
   { id: 'contribution', t: ['정부 지원', '기여도 분석'], sub: '성과를 재단에 귀속하지 않고, 정부·연구자·기관·기업의 복합 요인 속에서 재단 지원의 기여를 근거 수준과 함께 제시합니다.' },
   { id: 'outreach', t: ['홍보', '확산'], sub: '「50년 대표 성과·연구자 사례집」 기획·원고와 성과 시각화 자료 구성안. 시각화 자료 네 가지는 하위 메뉴에서 예제로 볼 수 있습니다.' },
 ];
@@ -286,7 +287,26 @@ const trackKpi = k => {
     [`${LIST[k].length}<small> ${u}</small>`, '후보군 풀 · 목표 300건 이상'],
     [`${count(k, it => it.track === 'both')}<small> ${u}</small>`, '핵심 후보 · 두 트랙 공통 도출'],
     [`${count(k, it => it.ev >= 2)}<small> ${u}</small>`, '근거문헌 2건 이상 확인'],
-  ].map(([n, l], i) => `<div class="tile"><div class="blob ${G[i]} ${i % 2 ? 'b2' : ''}">${['선정', '후보', '핵심', '근거'][i]}</div><div class="n">${n}</div><div class="l">${l} (예시)</div></div>`).join('')}</div>`;
+  ].map(([n, l], i) => `<div class="tile"><div class="blob ${G[i]} ${i % 2 ? 'b2' : ''}">${['선정', '후보', '핵심', '근거'][i]}</div><div class="n">${n}</div><div class="l">${l} (예시)</div></div>`).join('')}</div>
+  <div class="row c4">${[
+    ['선정 달성률', selected(k).length, TARGET, `목표 ${TARGET}${k === 'o' ? '선' : '인'} 대비`],
+    ['후보군 풀 확보율', LIST[k].length, 300, '목표 300건 대비'],
+    ['핵심 후보 비율', count(k, it => it.track === 'both'), LIST[k].length, '후보 중 두 트랙 공통 도출'],
+    ['근거 확인율', count(k, it => it.ev >= 2), LIST[k].length, '후보 중 근거문헌 2건 이상'],
+  ].map(([h, v, t, l], i) => gauge(h, v, t, l, GC[i], u)).join('')}</div>`;
+};
+// 반원 게이지: 값/기준의 비율을 호의 길이로 나타낸다
+const gauge = (title, v, total, note, color, unit) => {
+  const pct = Math.max(0, Math.min(1, v / (total || 1))), R0 = 70, len = Math.PI * R0, a = Math.PI * (1 - pct), nx = 90 + Math.cos(a) * 52, ny = 88 - Math.sin(a) * 52;
+  return `<div class="tile gauge"><h3>${title}</h3>
+    <svg viewBox="0 0 180 104" role="img" aria-label="${title} ${Math.round(pct * 100)}퍼센트">
+      <path d="M20 88 A${R0} ${R0} 0 0 1 160 88" fill="none" stroke="#DCE1EA" stroke-width="14" stroke-linecap="round"/>
+      <path d="M20 88 A${R0} ${R0} 0 0 1 160 88" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${(len * pct).toFixed(1)} ${len.toFixed(1)}"/>
+      ${[0, .25, .5, .75, 1].map(t => { const b = Math.PI * (1 - t); return `<line x1="${(90 + Math.cos(b) * 57).toFixed(1)}" y1="${(88 - Math.sin(b) * 57).toFixed(1)}" x2="${(90 + Math.cos(b) * 53).toFixed(1)}" y2="${(88 - Math.sin(b) * 53).toFixed(1)}" stroke="#A9B2C3" stroke-width="1.5"/>`; }).join('')}
+      <line x1="90" y1="88" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="#27365A" stroke-width="3" stroke-linecap="round"/><circle cx="90" cy="88" r="6" fill="#27365A"/>
+      <text x="20" y="102" text-anchor="middle">0</text><text x="160" y="102" text-anchor="middle">${total}</text>
+    </svg>
+    <div class="n">${Math.round(pct * 100)}<small>%</small></div><div class="l">${v} / ${total}${unit} · ${note} (예시)</div></div>`;
 };
 // 후보 대비 최종선정 분포 막대
 const dist = (k, rows) => { const mx = Math.max(1, ...rows.map(r => r[1])); return rows.map(([l, n, s, c]) => bar(l, n / mx * 100, `${s} / ${n}`, c, '150px 1fr 56px')).join(''); };
@@ -364,7 +384,268 @@ const renderGrid = () => {
   }).join('') || '<p class="mute">조건에 맞는 후보가 없습니다.</p>';
 };
 
-/* ========== 05 정부 지원 기여도 분석 ========== */
+/* ========== 05 연구 네트워크 (옵시디언 그래프 스타일) ========== */
+const LINKT = { tie: ['성과–연구자 연계', '#C9D2E3', '대표 성과와 그 성과를 만든 연구자'], co: ['공동연구', '#3D9FE6', '공저·공동과제로 이어진 연구자'], gen: ['인용·후속과제 계보', '#F6A53A', '앞선 성과가 뒤 성과의 토대가 된 관계'], ment: ['사제 관계', '#EC5C8D', '지도교수와 배출 인력'] };
+const ERA_C = ['#EC5C8D', '#F6A53A', '#27B894', '#3D9FE6', '#9B8CFF'], STAGE_C = ['#7E8AA6', '#3D9FE6', '#F6A53A', '#27B894'];
+const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const gx = { pos: {}, tf: { x: 0, y: 0, k: 1 }, cam: null, auto: true, show: { o: true, p: true }, types: { tie: true, co: true, gen: true, ment: true }, domain: '', scope: 'all',
+  sel: null, hover: null, q: '', alpha: 0, year: 2026, playing: false, color: 'domain', size: 'deg', depth: 1, pathMode: false, path: null, force: { rep: 520, dist: 62, grav: 5 }, N: [], L: [], V: [], VL: [], vadj: {} };
+// 연계(tie)는 후보 데이터의 실제 연결, 나머지 세 종류는 구조 시연용으로 생성한 예시 관계다
+const graphLinks = () => gx.all ||= (() => {
+  const L = [];
+  OUTCOMES.forEach(o => o.people.forEach(p => L.push({ s: o.id, t: p, type: 'tie' })));
+  PEOPLE.forEach((p, i) => {
+    const r = rng(i * 17 + 5), same = PEOPLE.filter(q => q.domain === p.domain && q.id !== p.id);
+    for (let j = 0, k = 1 + Math.floor(r() * 2); j < k; j++) { const pool = r() < .75 ? same : PEOPLE, q = pool[Math.floor(r() * pool.length)]; if (q.id !== p.id) L.push({ s: p.id, t: q.id, type: 'co' }); }
+    const seniors = same.filter(q => q.y0 <= p.y0 - 12);
+    if (seniors.length && r() < .6) L.push({ s: seniors[Math.floor(r() * seniors.length)].id, t: p.id, type: 'ment' });
+  });
+  OUTCOMES.forEach((o, i) => {
+    const r = rng(i * 23 + 9), earlier = OUTCOMES.filter(q => q.domain === o.domain && q.y0 < o.y0);
+    if (earlier.length && r() < .7) L.push({ s: earlier[Math.floor(r() * earlier.length)].id, t: o.id, type: 'gen' });
+    if (r() < .2) { const q = OUTCOMES[Math.floor(r() * OUTCOMES.length)]; if (q.id !== o.id) L.push({ s: q.id, t: o.id, type: 'gen' }); }
+  });
+  const seen = new Set();
+  return L.filter(l => { const k = [l.s, l.t].sort().join('|') + l.type; return seen.has(k) ? false : seen.add(k); });
+})();
+const graphData = () => {
+  const ok = it => gx.show[it.kind] && (!gx.domain || it.domain === gx.domain) && (gx.scope === 'all' || stageOf(it) === 3);
+  const nodes = [...OUTCOMES, ...PEOPLE].filter(ok), ids = new Set(nodes.map(n => n.id));
+  const links = graphLinks().filter(l => gx.types[l.type] && ids.has(l.s) && ids.has(l.t)), deg = {}, adj = {};
+  links.forEach(l => { for (const [a, b] of [[l.s, l.t], [l.t, l.s]]) { deg[a] = (deg[a] || 0) + 1; (adj[a] ||= new Set()).add(b); } });
+  return { nodes, links, deg, adj };
+};
+const gLabel = it => it.kind === 'o' ? it.title : `${it.id} ${it.field}`;
+const gColor = it => gx.color === 'era' ? ERA_C[ERAS.findIndex(e => e.id === it.era)] : gx.color === 'stage' ? STAGE_C[stageOf(it)] : gx.color === 'kind' ? (it.kind === 'o' ? '#F6A53A' : '#3D9FE6') : dom(it.domain).color;
+const gSize = (it, deg) => gx.size === 'score' ? 4 + (score(it) - 55) / 45 * 10 : gx.size === 'roi' ? 4 + Math.min(roi(it), 40) / 40 * 11 : 4 + Math.sqrt(deg) * 2.3;
+
+// 강조 집합: 경로가 있으면 경로, 없으면 선택·호버 노드에서 depth 단계까지의 이웃
+const gHl = () => {
+  const id = gx.hover || gx.sel; gx.hl = null; gx.hlId = id;
+  if (gx.path) { gx.hl = gx.path.nodes; return; }
+  if (!id) return;
+  const s = new Set([id]); let fr = [id];
+  for (let d = 0; d < gx.depth; d++) { const nx = []; for (const a of fr) for (const b of gx.vadj[a] || []) if (!s.has(b)) { s.add(b); nx.push(b); } fr = nx; }
+  gx.hl = s;
+};
+// 연도 기준으로 보이는 노드·연결을 다시 계산한다. 새로 나타난 노드는 이웃 곁에서 튀어나오게 한다
+const gSetYear = (yr, animate) => {
+  gx.year = yr; const y = Math.floor(yr); if (y === gx.vy) return;
+  const was = new Set(gx.V.map(n => n.id)); gx.vy = y;
+  gx.V = gx.N.filter(n => n.year <= y); const ids = new Set(gx.V.map(n => n.id));
+  gx.VL = gx.L.filter(l => ids.has(l.a.id) && ids.has(l.b.id)); gx.vadj = {};
+  gx.VL.forEach(l => { (gx.vadj[l.a.id] ||= new Set()).add(l.b.id); (gx.vadj[l.b.id] ||= new Set()).add(l.a.id); });
+  if (animate) for (const n of gx.V) if (!was.has(n.id)) {
+    n.born = performance.now();
+    const l = gx.VL.find(e => (e.a === n && was.has(e.b.id)) || (e.b === n && was.has(e.a.id))), o = l ? (l.a === n ? l.b : l.a) : null;
+    if (o) { n.x = o.x + (Math.random() - .5) * 34; n.y = o.y + (Math.random() - .5) * 34; }
+    n.vx = n.vy = 0; gx.alpha = Math.max(gx.alpha, .32);
+  }
+  if (gx.sel && !ids.has(gx.sel)) { gx.sel = null; gx.path = null; }
+  gHl();
+  const set = (q, v) => { const el = $(q); if (el) el.textContent = v; };
+  set('#gyear', y); set('#gcount', `노드 ${gx.V.length} · 연결 ${gx.VL.length}`);
+  const sl = $('[data-gyear]'); if (sl && +sl.value !== y) sl.value = y;
+};
+const gTick = () => {
+  const N = gx.V, a = gx.alpha, F = gx.force;
+  for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
+    const p = N[i], q = N[j]; let dx = p.x - q.x, dy = p.y - q.y, d2 = dx * dx + dy * dy;
+    if (d2 < 1) { dx = (i % 3) - 1 || .5; dy = (j % 3) - 1 || .5; d2 = 1; }
+    if (d2 > 90000) continue;
+    const f = Math.min(5, F.rep * a / d2); p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f;
+  }
+  for (const l of gx.VL) { const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.hypot(dx, dy) || 1, f = (d - F.dist) / d * .06 * a; l.a.vx += dx * f; l.a.vy += dy * f; l.b.vx -= dx * f; l.b.vy -= dy * f; }
+  for (const n of N) { n.vx -= n.x * F.grav / 100 * a; n.vy -= n.y * F.grav / 77 * a; n.vx *= .82; n.vy *= .82; if (!n.fixed) { n.x += n.vx; n.y += n.vy; } gx.pos[n.id] = [n.x, n.y]; }
+  gx.alpha *= .988;
+};
+const gFitTarget = () => {
+  if (!gx.V.length) return { x: 0, y: 0, k: 1 };
+  const xs = gx.V.map(n => n.x), ys = gx.V.map(n => n.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const k = Math.max(.35, Math.min(1.7, (gx.cv.clientWidth - 90) / (x1 - x0 || 1), (gx.cv.clientHeight - 150) / (y1 - y0 || 1)));
+  return { k, x: -(x0 + x1) / 2 * k, y: -(y0 + y1) / 2 * k - 14 };
+};
+const gPath = (a, b) => {
+  const prev = { [a]: null }, q = [a];
+  while (q.length) { const x = q.shift(); if (x === b) break; for (const y of gx.vadj[x] || []) if (!(y in prev)) { prev[y] = x; q.push(y); } }
+  if (!(b in prev)) return null;
+  const list = []; for (let x = b; x; x = prev[x]) list.unshift(x);
+  return { list, nodes: new Set(list), edges: new Set(list.slice(1).map((x, i) => [list[i], x].sort().join('|'))) };
+};
+
+const gDraw = now => {
+  const cv = gx.cv, c = gx.ctx, w = cv.clientWidth, h = cv.clientHeight, { x: tx, y: ty, k } = gx.tf, ox = w / 2 + tx, oy = h / 2 + ty, t = now / 1000;
+  c.setTransform(gx.dpr, 0, 0, gx.dpr, 0, 0); c.globalAlpha = 1; c.fillStyle = '#1B2238'; c.fillRect(0, 0, w, h);
+  const bg = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * .62); bg.addColorStop(0, 'rgba(61,159,230,.13)'); bg.addColorStop(1, 'rgba(61,159,230,0)'); c.fillStyle = bg; c.fillRect(0, 0, w, h);
+  const hl = gx.hl, id = gx.hlId, path = gx.path, q = gx.q.trim().toLowerCase(), rs = Math.max(.7, Math.min(1.7, k)), drift = REDUCE ? 0 : 1.6;
+  for (const n of gx.V) { n.sx = (n.x + Math.sin(t * .7 + n.ph) * drift) * k + ox; n.sy = (n.y + Math.cos(t * .6 + n.ph * 1.7) * drift) * k + oy; }
+  const linkOn = l => path ? path.edges.has(l.key) : !hl || (hl.has(l.a.id) && hl.has(l.b.id) && (gx.depth > 1 || l.a.id === id || l.b.id === id));
+
+  for (const l of gx.VL) {
+    const on = linkOn(l);
+    c.globalAlpha = on ? (hl ? .95 : .26) : .035; c.strokeStyle = LINKT[l.type][1]; c.lineWidth = on && hl ? (path ? 2.6 : 1.8) : 1;
+    c.beginPath(); c.moveTo(l.a.sx, l.a.sy); c.lineTo(l.b.sx, l.b.sy); c.stroke();
+  }
+  // 연결을 따라 흐르는 입자: 지식이 이동하는 방향감을 준다
+  if (!REDUCE) for (const l of gx.VL) {
+    const on = linkOn(l); if (hl && !on) continue;
+    const hot = hl && on, n = hot ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const u = (t * (hot ? (path ? .7 : .42) : .11) + l.ph + i / n) % 1;
+      c.globalAlpha = (hot ? 1 : .55) * Math.sin(u * Math.PI); c.fillStyle = hot ? '#fff' : LINKT[l.type][1];
+      c.beginPath(); c.arc(l.a.sx + (l.b.sx - l.a.sx) * u, l.a.sy + (l.b.sy - l.a.sy) * u, hot ? 2.6 : 1.5, 0, 7); c.fill();
+    }
+  }
+  c.textAlign = 'center'; c.font = '11px Pretendard, "Malgun Gothic", sans-serif';
+  for (const n of gx.V) {
+    const on = !hl || hl.has(n.id), age = n.born ? (now - n.born) / 650 : 1, grow = age >= 1 ? 1 : 1 + 2.7 * Math.pow(age - 1, 3) + 1.7 * Math.pow(age - 1, 2);
+    const r = n.r * rs * Math.max(.05, grow), col = n.col, hit = q && gLabel(n.it).toLowerCase().includes(q), a0 = on ? 1 : .1;
+    if (n.born && now - n.born < 1100) { const u = (now - n.born) / 1100; c.globalAlpha = (1 - u) * .7 * a0; c.strokeStyle = col; c.lineWidth = 2; c.beginPath(); c.arc(n.sx, n.sy, r + u * 34, 0, 7); c.stroke(); }
+    if ((n.deg >= 7 || hit) && on) { c.globalAlpha = (hit ? .3 : .13) + .06 * Math.sin(t * 2 + n.ph); c.fillStyle = hit ? '#FFE082' : col; c.beginPath(); c.arc(n.sx, n.sy, r * 2.3 + 3, 0, 7); c.fill(); }
+    c.globalAlpha = a0; c.beginPath(); c.arc(n.sx, n.sy, r, 0, 7);
+    if (n.it.kind === 'o') { c.fillStyle = col; c.fill(); } else { c.fillStyle = '#1B2238'; c.fill(); c.lineWidth = 2.6; c.strokeStyle = col; c.stroke(); }
+    if (n.id === gx.sel || n.id === gx.hover) {
+      c.beginPath(); c.arc(n.sx, n.sy, r + 4, 0, 7); c.lineWidth = 2; c.strokeStyle = '#fff'; c.stroke();
+      if (n.id === gx.sel && !REDUCE) { const u = (t * .8) % 1; c.globalAlpha = (1 - u) * .8; c.beginPath(); c.arc(n.sx, n.sy, r + 4 + u * 22, 0, 7); c.stroke(); }
+    }
+    const la = hl ? (on ? 1 : 0) : hit ? 1 : Math.max(n.deg >= 7 ? .8 : 0, Math.min(1, (k - 1.05) / .5));
+    if (la > .02 && grow > .6) { const s = gLabel(n.it); c.globalAlpha = la; c.fillStyle = '#E6EBF5'; c.fillText(s.length > 16 ? s.slice(0, 15) + '…' : s, n.sx, n.sy + r + 13); }
+  }
+  if (gx.playing || gx.vy < 2026) { c.globalAlpha = .2; c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = '700 54px Pretendard, sans-serif'; c.fillText(gx.vy, 22, 64); }
+  c.globalAlpha = 1;
+};
+const gBtn = () => { const b = $('#gplay'); if (b) b.textContent = gx.playing ? '❚❚ 일시정지' : gx.vy >= 2026 ? '▶ 50년 성장 재생' : '▶ 이어서 재생'; };
+const gLoop = now => {
+  if (!gx.cv?.isConnected) { gx.run = false; return; }
+  const dt = Math.min(.05, (now - (gx.last || now)) / 1000); gx.last = now;
+  if (gx.playing) { const y = gx.year + dt * 3.4; if (y >= 2026) { gSetYear(2026, true); gx.playing = false; gBtn(); } else gSetYear(y, true); }
+  if (gx.alpha > .004) gTick();
+  if (gx.auto) gx.cam = gFitTarget();
+  if (gx.cam) { const c = gx.cam, e = REDUCE ? 1 : .12; gx.tf.x += (c.x - gx.tf.x) * e; gx.tf.y += (c.y - gx.tf.y) * e; gx.tf.k += (c.k - gx.tf.k) * e; if (!gx.auto && Math.abs(c.x - gx.tf.x) + Math.abs(c.y - gx.tf.y) < .6 && Math.abs(c.k - gx.tf.k) < .004) gx.cam = null; }
+  gDraw(now); requestAnimationFrame(gLoop);
+};
+const gAt = e => {
+  const b = gx.cv.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top; let best = null, bd = 1e9;
+  for (const n of gx.V) { const d = Math.hypot(n.sx - mx, n.sy - my); if (d < n.r * 1.7 + 6 && d < bd) { best = n; bd = d; } }
+  return best;
+};
+const gPanel = () => {
+  const el = $('#gpanel'); if (!el) return;
+  const by = Object.fromEntries(gx.N.map(n => [n.id, n])), n = by[gx.sel];
+  if (gx.path) {
+    const P = gx.path.list.map(i => by[i]);
+    el.innerHTML = `<h2>최단 <b>연결 경로</b></h2>${dots}<p class="lead">${P.length - 1}단계 만에 이어집니다.</p><ol class="rank">${P.map((x, i) => { const l = i ? gx.VL.find(e => e.key === [P[i - 1].id, x.id].sort().join('|')) : null; return `${l ? `<li class="via"><b></b><span><i class="dot" style="background:${LINKT[l.type][1]}"></i>${LINKT[l.type][0]}</span><b></b></li>` : ''}<li data-act="gsel" data-v="${x.id}"><b>${i + 1}</b><span>${gLabel(x.it)}</span><b></b></li>`; }).join('')}</ol><div class="chips mt"><button class="btn" data-act="gclear">경로 지우기</button></div>`;
+    return;
+  }
+  if (!n) {
+    el.innerHTML = `<h2>연결 <b>허브</b></h2>${dots}<p class="lead">연결이 많은 노드입니다. 누르면 그래프에서 강조되고 화면이 따라갑니다.</p><ol class="rank">${[...gx.V].sort((a, b) => (gx.vadj[b.id]?.size || 0) - (gx.vadj[a.id]?.size || 0)).slice(0, 9).map((x, i) => `<li data-act="gsel" data-v="${x.id}"><b>${i + 1}</b><span>${gLabel(x.it)}</span><b>${gx.vadj[x.id]?.size || 0}</b></li>`).join('')}</ol>`;
+    return;
+  }
+  const it = n.it, d = dom(it.domain), nbs = gx.VL.filter(l => l.a.id === it.id || l.b.id === it.id).map(l => ({ o: l.a.id === it.id ? l.b.it : l.a.it, type: l.type }));
+  el.innerHTML = `<div class="mute sm">${it.id} · ${it.kind === 'o' ? '대표 성과' : '대표 연구자'} · ${it.y0}년 출발</div><h2 style="margin-top:4px"><b>${it.kind === 'o' ? it.title : `${it.title} · ${it.field}`}</b></h2>
+    <div class="chips" style="gap:6px;margin-top:10px">${pill(it)}<span class="tag">${d.label}</span><span class="tag">연결 ${nbs.length}</span></div>
+    <p class="mute sm mt">${FEEL[it.guide]}</p>
+    <div class="chips mt" style="gap:6px">${[1, 2].map(v => `<button class="chip ${gx.depth === v ? 'on' : ''}" data-act="gdepth" data-v="${v}" style="font-size:11.5px;padding:5px 10px">${v}단계 이웃</button>`).join('')}<button class="chip ${gx.pathMode ? 'on' : ''}" data-act="gpathmode" style="font-size:11.5px;padding:5px 10px">경로 찾기</button></div>
+    ${gx.pathMode ? '<p class="sm mt" style="color:var(--pink);font-weight:700">그래프에서 도착 노드를 누르세요.</p>' : ''}
+    ${Object.entries(LINKT).map(([t, [label, col]]) => { const g = nbs.filter(x => x.type === t); return g.length ? `<h3 class="mt" style="font-size:12.5px"><i class="dot" style="background:${col}"></i>${label} ${g.length}</h3><div class="chips" style="gap:6px;margin-top:8px">${g.map(x => `<button class="chip" data-act="gsel" data-v="${x.o.id}" style="font-size:11.5px;padding:5px 10px">${gLabel(x.o)}</button>`).join('')}</div>` : ''; }).join('') || '<p class="mute sm mt">현재 조건에서 연결된 노드가 없습니다.</p>'}
+    <div class="chips mt2"><button class="btn pri" data-act="open" data-v="${it.id}">상세 열기</button><button class="btn" data-act="gsel" data-v="">선택 해제</button></div>`;
+};
+const mountGraph = () => {
+  const cv = $('#graph'); if (!cv) return;
+  const { nodes, links, deg } = graphData(); let fresh = 0;
+  gx.N = nodes.map((it, i) => {
+    let p = gx.pos[it.id];
+    // 처음 그릴 때는 중심 부근에서 출발해 바깥으로 퍼지는 장면을 보여준다
+    if (!p) { fresh++; const a = i * 2.4, r = REDUCE ? 120 + (i * 37) % 160 : 6 + (i % 9) * 3; p = [Math.cos(a) * r, Math.sin(a) * r]; }
+    return { id: it.id, it, x: p[0], y: p[1], vx: 0, vy: 0, deg: deg[it.id] || 0, r: gSize(it, deg[it.id] || 0), col: gColor(it), year: it.y0, ph: (i * 1.93) % 6.28, sx: 0, sy: 0 };
+  });
+  const by = Object.fromEntries(gx.N.map(n => [n.id, n]));
+  gx.L = links.map((l, i) => ({ a: by[l.s], b: by[l.t], type: l.type, key: [l.s, l.t].sort().join('|'), ph: (i * .618) % 1 }));
+  if (!by[gx.sel]) { gx.sel = null; gx.path = null; } gx.hover = null; gx.V = []; gx.vy = null;
+  gx.cv = cv; gx.ctx = cv.getContext('2d');
+  const size = () => { gx.dpr = window.devicePixelRatio || 1; cv.width = cv.clientWidth * gx.dpr; cv.height = cv.clientHeight * gx.dpr; };
+  size(); new ResizeObserver(size).observe(cv);
+  gSetYear(gx.year, false);
+  if (fresh) { gx.alpha = 1; gx.auto = true; if (REDUCE) { for (let i = 0; i < 300; i++) gTick(); gx.tf = gFitTarget(); } } else gx.alpha = Math.max(gx.alpha, .2);
+
+  let drag = null; const hands = () => { gx.auto = false; gx.cam = null; };
+  cv.onpointerdown = e => { const n = gAt(e); drag = { n, x: e.clientX, y: e.clientY, moved: 0 }; if (n) n.fixed = true; cv.setPointerCapture(e.pointerId); };
+  cv.onpointermove = e => {
+    if (drag) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved += Math.abs(dx) + Math.abs(dy); drag.x = e.clientX; drag.y = e.clientY;
+      if (drag.moved > 4) hands();
+      if (drag.n) { drag.n.x += dx / gx.tf.k; drag.n.y += dy / gx.tf.k; gx.alpha = Math.max(gx.alpha, .3); } else { gx.tf.x += dx; gx.tf.y += dy; }
+      return;
+    }
+    const n = gAt(e), id = n ? n.id : null;
+    if (id !== gx.hover) { gx.hover = id; cv.style.cursor = id ? 'pointer' : 'grab'; gHl(); }
+  };
+  cv.onpointerup = () => {
+    if (!drag) return; if (drag.n) drag.n.fixed = false;
+    if (drag.moved < 5) {
+      if (gx.pathMode && drag.n && gx.sel && drag.n.id !== gx.sel) { gx.path = gPath(gx.sel, drag.n.id); gx.pathMode = false; if (!gx.path) gx.sel = drag.n.id; }
+      else { gx.sel = drag.n ? drag.n.id : null; gx.path = null; gx.pathMode = false; }
+      gHl(); gPanel();
+    }
+    drag = null;
+  };
+  cv.onpointerleave = () => { if (!drag && gx.hover) { gx.hover = null; gHl(); } };
+  cv.ondblclick = e => { const n = gAt(e); if (n) openModal(n.id); };
+  cv.onwheel = e => {
+    e.preventDefault(); hands();
+    const b = cv.getBoundingClientRect(), mx = e.clientX - b.left - b.width / 2, my = e.clientY - b.top - b.height / 2, k0 = gx.tf.k, k = Math.max(.35, Math.min(4, k0 * (e.deltaY < 0 ? 1.12 : .89)));
+    gx.tf.x = mx - (mx - gx.tf.x) * k / k0; gx.tf.y = my - (my - gx.tf.y) * k / k0; gx.tf.k = k;
+  };
+  gPanel(); gBtn(); gDraw(performance.now());
+  if (!gx.run) { gx.run = true; gx.last = 0; requestAnimationFrame(gLoop); }
+};
+
+R.network = () => {
+  const { nodes, links, deg, adj } = graphData(), no = nodes.filter(n => n.kind === 'o').length, np = nodes.length - no, by = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const iso = nodes.filter(n => !deg[n.id]).length, avg = nodes.length ? (links.length * 2 / nodes.length).toFixed(1) : '0';
+  const tg = (on, act, v, label, col) => `<button class="chip ${on ? 'on' : ''}" data-act="${act}" data-v="${v}">${col ? `<i style="background:${col}"></i>` : ''}${label}</button>`;
+  const leg = gx.color === 'era' ? ERAS.map((e, i) => ({ label: `${e.no} ${e.label}`, color: ERA_C[i] })) : gx.color === 'stage' ? STAGES.map((s, i) => ({ label: s, color: STAGE_C[i] })) : gx.color === 'kind' ? [{ label: '대표 성과', color: '#F6A53A' }, { label: '대표 연구자', color: '#3D9FE6' }] : DOMAINS;
+  // 영역 간 연결 행렬과 여러 영역을 잇는 매개 노드
+  const mat = DOMAINS.map(a => DOMAINS.map(b => links.filter(l => { const x = by[l.s].domain, y = by[l.t].domain; return (x === a.id && y === b.id) || (x === b.id && y === a.id); }).length)), mmx = Math.max(1, ...mat.flat());
+  const bridges = nodes.map(n => ({ n, ds: new Set([...(adj[n.id] || [])].map(i => by[i].domain).filter(x => x !== n.domain)) })).filter(x => x.ds.size).sort((a, b) => b.ds.size - a.ds.size || (deg[b.n.id] || 0) - (deg[a.n.id] || 0)).slice(0, 7);
+  const cross = links.filter(l => by[l.s].domain !== by[l.t].domain).length;
+  return `
+  <div class="row c4">${[[nodes.length, '개', `노드 · 성과 ${no} + 연구자 ${np}`], [links.length, '개', `연결 · 영역 간 ${cross}개`], [avg, '', '노드당 평균 연결'], [iso, '개', '연결 없는 노드']].map(([n, u, l], i) => `<div class="tile"><div class="blob ${G[i]} ${i % 2 ? 'b2' : ''}">${['노드', '연결', '평균', '고립'][i]}</div><div class="n">${n}<small> ${u}</small></div><div class="l">${l}</div></div>`).join('')}</div>
+  <div class="toolbar" style="margin-bottom:12px">
+    <input class="field" type="search" placeholder="성과명·분야 검색 (그래프에서 강조)" value="${esc(gx.q)}" data-gq aria-label="그래프 검색" style="flex:1 1 220px">
+    <button class="btn" data-act="gfit">화면 맞춤</button><button class="btn" data-act="grelayout">다시 배치</button><button class="btn" data-act="gfull">전체 화면</button><button class="btn" data-act="gpng">PNG 저장</button>
+  </div>
+  <div class="chips" style="margin-bottom:10px">
+    ${tg(gx.show.o, 'gshow', 'o', '대표 성과 ●')}${tg(gx.show.p, 'gshow', 'p', '대표 연구자 ○')}
+    <span style="width:10px"></span>${tg(gx.scope === 'all', 'gscope', 'all', '전체 후보')}${tg(gx.scope === 'sel', 'gscope', 'sel', '최종선정만')}
+    <span style="width:10px"></span>${tg(!gx.domain, 'gdom', '', '전체 영역')}${DOMAINS.map(d => tg(gx.domain === d.id, 'gdom', d.id, d.short, d.color)).join('')}
+  </div>
+  <div class="chips" style="margin-bottom:10px">${Object.entries(LINKT).map(([t, [l, c]]) => tg(gx.types[t], 'gtype', t, l, c)).join('')}</div>
+  <div class="chips" style="margin-bottom:22px"><span class="mute sm" style="align-self:center">색</span>${[['domain', '지원 영역'], ['era', '시대 구간'], ['stage', '검증 단계'], ['kind', '성과·연구자']].map(([v, l]) => tg(gx.color === v, 'gcolor', v, l)).join('')}
+    <span style="width:10px"></span><span class="mute sm" style="align-self:center">크기</span>${[['deg', '연결 수'], ['score', '성과 점수'], ['roi', '투자 대비 성과 지수']].map(([v, l]) => tg(gx.size === v, 'gsizem', v, l)).join('')}</div>
+  <div class="row gcols">
+    <section class="slide" style="padding:14px">
+      <div class="graph-wrap"><canvas id="graph" aria-label="대표 성과와 대표 연구자의 연구 네트워크 그래프"></canvas>
+        <div class="graph-hint">끌기: 이동 · 휠: 확대 · 노드 끌기: 재배치 · 클릭: 선택 · 더블클릭: 상세</div>
+        <div class="graph-time"><button class="btn" id="gplay" data-act="gplay">▶ 50년 성장 재생</button><input type="range" min="1977" max="2026" value="${Math.floor(gx.year)}" data-gyear aria-label="연도"><b id="gyear">${Math.floor(gx.year)}</b><span id="gcount"></span></div></div>
+      <div style="padding:4px 10px 6px">${legend(leg)}</div>
+    </section>
+    <div class="gside">
+      <section class="slide" id="gpanel"></section>
+      <section class="slide"><h2>그래프 <b>힘 조절</b></h2>${dots}
+        ${[['rep', '반발력', 120, 1400, 20], ['dist', '연결 거리', 25, 160, 1], ['grav', '중심 인력', 1, 14, 1]].map(([key, l, mn, mx, st]) => `<label class="slider" style="grid-template-columns:70px 1fr 40px"><span>${l}</span><input type="range" min="${mn}" max="${mx}" step="${st}" value="${gx.force[key]}" data-gf="${key}" aria-label="${l}"><b id="gf-${key}">${gx.force[key]}</b></label>`).join('')}
+        <p class="mute sm mt">움직이면 그래프가 바로 다시 펼쳐집니다.</p></section>
+    </div>
+  </div>
+  <div class="row c2">
+    ${slide('영역 간 <b>연결 행렬</b>', `<div class="tw"><table class="heat"><thead><tr><th></th>${DOMAINS.map(d => `<th>${d.short}</th>`).join('')}</tr></thead><tbody>${DOMAINS.map((a, i) => `<tr><td><b>${a.short}</b></td>${DOMAINS.map((b, j) => `<td style="background:rgba(61,159,230,${(mat[i][j] / mmx * .55).toFixed(2)})">${mat[i][j] || '<span class="mute">—</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div><p class="mute sm mt">대각선은 영역 안, 나머지는 영역을 넘는 연결입니다. 전체 ${links.length}개 중 ${cross}개(${links.length ? Math.round(cross / links.length * 100) : 0}%)가 영역 간 연결입니다.</p>`, '어느 영역끼리 많이 이어져 있는가')}
+    ${slide('영역을 잇는 <b>매개 노드</b>', `<ol class="rank">${bridges.map((x, i) => `<li data-act="gsel" data-v="${x.n.id}"><b>${i + 1}</b><span>${gLabel(x.n)} <span class="mute">· ${[...x.ds].map(q => dom(q).short).join('·')}</span></span><b>${x.ds.size}</b></li>`).join('') || '<li style="cursor:default"><b></b><span class="mute">영역 간 연결 없음</span><b></b></li>'}</ol><p class="mute sm mt">자기 영역 밖 몇 개 영역과 이어져 있는지 순서입니다. 융합 연구와 지식 이전의 통로를 찾는 데 씁니다.</p>`, '다른 영역과 연결된 성과·연구자')}
+  </div>
+  ${slide('연결의 <b>종류</b>', tbl(['연결', '의미', '분석 근거', '수'], Object.entries(LINKT).map(([t, [l, c, d]]) => [`<i class="dot" style="background:${c}"></i>${l}`, d, { tie: '투입-성과 연계 DB (과제 ID·연구자 ID)', co: '공저 네트워크, 공동 과제', gen: '인용 네트워크, 과제-후속과제 연결망', ment: '프로필 DB의 배출 인력' }[t], links.filter(x => x.type === t).length])) +
+    '<p class="mute sm mt">성과–연구자 연계는 후보 데이터의 연결이고, 공동연구·계보·사제 관계는 구조를 보여주기 위해 생성한 예시입니다. 실제 분석에서는 인용·공저 네트워크와 과제-후속과제 연결망으로 지식 확산 경로를, 사제·공동연구 네트워크로 연구 생태계의 범위와 다음 세대로의 확산을 측정합니다.</p>' + foot('연구 네트워크'))}`;
+};
+
+/* ========== 06 정부 지원 기여도 분석 ========== */
 const scatter = list => {
   const W = 760, H = 280, L = 40, B = 30, T = 12, x = v => L + (W - L - 12) * (Math.log10(v) / 2.6), y = v => T + (H - T - B) * (1 - (v - 50) / 50);
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="실질 투입 대비 성과 점수 산점도">
@@ -425,8 +706,8 @@ R.contribution = () => {
   </div>`;
 };
 
-/* ========== 06 홍보 확산 ========== */
-const SUBS = [['plan', '기획 개요', '사례집·시각화'], ['life', '연구자 생애주기 성장 흐름도', '인물 중심'], ['path', '지원사업 연계 기술·학술 발전 경로도', '성과 중심'], ['map', '연구성과 대국민 확산 지도', '성과 중심'], ['info', '대표성과 인포그래픽', '성과 중심']];
+/* ========== 07 홍보 확산 ========== */
+const SUBS = [['plan', '기획 개요', '사례집·시각화'], ['life', '연구자 생애주기 성장 흐름도', '인물 중심'], ['path', '지원사업 연계 기술·학술 발전 경로도', '성과 중심'], ['map', '연구성과 대국민 확산 지도', '성과 중심'], ['info', '대표성과 인포그래픽', '성과 중심'], ['cards', '카드 뉴스', '성과·인물 중심']];
 const chev = '<svg viewBox="0 0 24 12" width="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 6h18M15 2l5 4-5 4"/></svg>';
 const chain = a => `<div class="para mt">${a.map((x, j) => `${j ? chev : ''}<b>${x}</b>`).join('')}</div>`;
 // 예제 대상 선택: 최종선정 → 점수 순으로 정렬
@@ -733,6 +1014,81 @@ OUT.info = () => {
   </section>`;
 };
 
+/* --- 카드 뉴스: 대표성과 10선·대표 연구자 10인 × 5장, 9:16 Remotion 모션그래픽 --- */
+// 카드 뉴스 대상: 성과·연구자 각 50. 최종선정을 앞에 두고, 연구자는 성장 궤적이 충분한(4단계 이상) 사례를 먼저 놓는다
+const CARD_N = 50;
+const cardFit = it => it.kind === 'o' || (it.life.length >= 4 && !(it.domain === 'hs' && ['P4', 'P5'].includes(it.guide)));
+const cardTop = k => (gc.top ||= {})[k] ||= [...LIST[k]].sort((a, b) => stageOf(b) - stageOf(a) || cardFit(b) - cardFit(a) || score(b) - score(a)).slice(0, CARD_N);
+// 카드 5장의 장면 명세. cards-remotion.js가 type별로 그린다
+const cardSpecs = (it, rank) => {
+  const d = dom(it.domain), era = ERAS.find(e => e.id === it.era), no = String(rank).padStart(2, '0'), base = { color: d.color, ref: it.id };
+  if (it.kind === 'o') {
+    const s = STORY[it.ctype], g = GRADES[it.grade], span = it.path[3].year - it.path[0].year;
+    const m = FACTORS.map((_, i) => Math.round(it.mix.reduce((a, x) => a + x[i], 0) / 4)); m[0] += 100 - m.reduce((a, b) => a + b, 0);
+    return [
+      { type: 'cover', kicker: `대표성과 50선 · ${no}`, title: it.title, sub: FEEL[it.guide], tags: [d.short, O_GUIDE[it.guide], `${it.region} 확산`] },
+      { type: 'big', kicker: '이야기의 시작', big: it.path[0].year, unit: '년', title: `「${it.path[0].program}」 지원에서 출발했습니다`, sub: it.path[0].desc, note: `${era.no} ${era.label} · ${era.sys}` },
+      { type: 'steps', kicker: '영향경로', title: `${span}년에 걸친 확산의 길`, steps: it.path.map((p, i) => ({ year: p.year, label: PATH_STAGES[i], desc: p.program })) },
+      { type: 'nums', kicker: '숫자로 보기', title: '함께 만든 성과', nums: [{ v: span, u: '년', l: '확산 기간' }, { v: it.invest, u: '억', l: '실질 투입' }, { v: score(it), u: '점', l: '성과 점수' }, { v: it.people.length, u: '명', l: '연계 연구자' }], bar: m, barTitle: '누가 함께 만들었나', barLabels: FACTORS.map(f => f.label) },
+      { type: 'end', kicker: '재단 지원의 기여', quote: FEEL[it.guide], lines: [`${s.k} ${it.ctype} · ${s.def}`, `${g.label} · ${g.def}`, USE_DESC[it.guide]], badge: s.arc.join(' → ') },
+    ].map(c => ({ ...base, ...c }));
+  }
+  const n = it.life.length, ti = Math.min(it.turn, n - 1), first = it.outcomes.map(byId)[0];
+  return [
+    { type: 'cover', kicker: `대표 연구자 50인 · ${no}`, title: `${it.field} 연구자`, sub: FEEL[it.guide], tags: [d.short, P_GUIDE[it.guide], it.life[n - 1].stage] },
+    { type: 'big', kicker: '첫 지원', big: it.y0, unit: '년', title: `「${it.life[0].program}」으로 시작했습니다`, sub: `${ROLES[0]}에서 출발한 연구 여정`, note: `${era.no} ${era.label} · ${era.sys}` },
+    { type: 'steps', kicker: '성장 궤적', title: '생애주기를 따라 자란 연구자', steps: it.life.map((p, i) => ({ year: p.year, label: p.stage, desc: p.program, mark: i === ti && ti > 0 })) },
+    { type: 'nums', kicker: '숫자로 보기', title: '지원이 키운 것', nums: [{ v: it.years, u: '년', l: '누적 지원' }, { v: it.grants, u: '건', l: '재단 지원 과제' }, { v: it.alumni, u: '명', l: '배출 인력' }, { v: it.papers, u: '편', l: '대표 논문·저서' }], note: it.gap ? `지원 공백 ${it.gap}년을 지나 다시 이어진 연구` : '단절 없는 후속 지원이 만든 성장' },
+    { type: 'end', kicker: '다음 세대로', quote: FEEL[it.guide], lines: [`공동연구자 ${it.coauthors}명과 함께한 연구`, `배출 인력 ${it.alumni}명이 학계와 산업으로`, first ? `연계 대표 성과 · ${first.title}` : '연계 대표 성과 발굴 중'], badge: `${ROLES[0]} → ${ROLES[n - 1]}` },
+  ].map(c => ({ ...base, ...c }));
+};
+// Remotion을 불러오기 전이나 불러오지 못했을 때 보이는 정지 카드
+const cardStill = (c, i) => `<div class="ccard"><div class="cstill" style="background:linear-gradient(162deg,${c.color} 0%,${c.color} 22%,#27365A 82%)"><small>대한민국 연구 50년 · ${i + 1}/5</small><span>${c.kicker}</span>
+  <h3>${c.type === 'big' ? `${c.big}${c.unit}` : c.title || c.quote}</h3><p>${c.type === 'cover' ? c.sub : c.type === 'big' ? c.title : c.type === 'steps' ? c.steps.map(s => `${s.year} ${s.label}`).join('<br>') : c.type === 'nums' ? c.nums.map(x => `${x.l} ${x.v}${x.u}`).join('<br>') : c.lines.join('<br>')}</p><em>${c.ref} · 예시 데이터</em></div></div>`;
+const cardItem = () => { const all = [...cardTop('o'), ...cardTop('p')]; return all.find(x => x.id === state.card) || all[0]; };
+const gc = {};
+const CARD_NAMES = ['표지', '시작', '경로', '숫자로보기', '기여와메시지'];
+// items의 카드를 PNG로 그려 ZIP Blob을 만든다. onStep(done, total)로 진행 상황을 알린다
+const buildCardZip = async (items, onStep = () => {}, jpg = false) => {
+  await Promise.all(['400', '600', '700', '800'].map(w => document.fonts.load(`${w} 40px Pretendard`))).catch(() => {});
+  const files = [], total = items.length * 5; let done = 0;
+  for (const it of items) {
+    const rank = cardTop(it.kind).findIndex(x => x.id === it.id) + 1, no = String(rank).padStart(2, '0');
+    const name = (it.kind === 'o' ? it.title : `${it.field}-연구자`).replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '-');
+    const dir = `${it.kind === 'o' ? '대표성과' : '대표연구자'}_${no}_${name}`, specs = cardSpecs(it, rank);
+    for (let i = 0; i < specs.length; i++) {
+      files.push({ name: `${dir}/${i + 1}_${CARD_NAMES[i]}.${jpg ? 'jpg' : 'png'}`, data: await cardImage(specs[i], i, jpg) });
+      onStep(++done, total); await new Promise(r => setTimeout(r));
+    }
+  }
+  files.push({ name: '안내.txt', data: new TextEncoder().encode(`대한민국 연구 50년 · 카드 뉴스\r\n\r\n규격: 세로형 9:16 (1080 x 1920) ${jpg ? 'JPG' : 'PNG'}, 세트당 5장\r\n구성: 1 표지 / 2 시작 / 3 경로 / 4 숫자로 보기 / 5 기여와 메시지\r\n수록: ${items.length}세트 ${total}장\r\n\r\n수치와 후보는 시연용 예시 데이터이며 실제 선정 결과가 아닙니다.\r\n연구자는 익명 처리해 분야로 표기했습니다.\r\n\r\n한국연구재단 | 한국외국어대학교\r\n`) });
+  return zipStore(files);
+};
+const mountCards = () => {
+  gc.un?.(); gc.un = null;
+  const el = $('#cardstage'); if (!el) return;
+  const it = cardItem(), specs = cardSpecs(it, cardTop(it.kind).findIndex(x => x.id === it.id) + 1);
+  import('./cards-remotion.js').then(m => { if (el.isConnected) gc.un = m.mount(el, specs); }).catch(() => { const n = $('#cardnote'); if (n) n.textContent = '모션그래픽 모듈을 불러오지 못해 정지 카드로 표시합니다.'; });
+};
+OUT.cards = () => {
+  const it = cardItem(), k = it.kind, rank = cardTop(k).findIndex(x => x.id === it.id) + 1, specs = cardSpecs(it, rank);
+  const pick = kk => `<div class="chips cardpick">${cardTop(kk).map((x, i) => `<button class="chip ${x.id === it.id ? 'on' : ''}" data-act="card" data-v="${x.id}"><i style="background:${dom(x.domain).color}"></i>${String(i + 1).padStart(2, '0')} ${kk === 'o' ? x.title : `${x.field} 연구자`}</button>`).join('')}</div>`;
+  return `
+  ${slide('카드 뉴스 <b>구성안</b>', info([['유형', '<span class="tag">성과 중심</span> <span class="tag">인물 중심</span>'], ['규격', '세로형 9:16 (1080 × 1920) · 장당 6초 반복 모션그래픽'], ['수량', '대표성과 50선 × 5장 + 대표 연구자 50인 × 5장 = <b>500장</b>'], ['5장 구성', '① 표지 → ② 시작(첫 지원) → ③ 경로(영향경로·성장 궤적) → ④ 숫자로 보기 → ⑤ 기여와 메시지'], ['제작 방식', 'Remotion 컴포지션 5종(표지·큰 숫자·단계·숫자판·맺음)에 연계 DB 값을 넣어 일괄 생성'], ['활용처', '인스타그램·유튜브 쇼츠·카카오 채널 등 세로형 SNS, 웹플랫폼 성과관·인물관, 50주년 전시']]) +
+    '<p class="mute sm mt">대상은 성과·연구자 각 50으로, 최종선정을 앞에 두고 나머지는 성과 점수 순으로 채웠습니다. 수치는 시연용 예시이며, 연구자는 익명 처리해 분야로 표기합니다.</p>')}
+  ${slide('대표성과 <b>50선</b>', pick('o'))}
+  ${slide('대표 연구자 <b>50인</b>', pick('p'))}
+  <section class="slide">
+    <div class="toolbar" style="margin-bottom:6px"><h2 style="flex:1 1 260px">${k === 'o' ? '대표성과' : '대표 연구자'} ${String(rank).padStart(2, '0')} · <b>${k === 'o' ? it.title : `${it.field} 연구자`}</b></h2>
+      <button class="btn" data-act="cardstep" data-v="-1">← 이전</button><button class="btn" data-act="cardstep" data-v="1">다음 →</button><button class="btn" data-act="open" data-v="${it.id}">상세 열기</button></div>
+    <div class="chips" style="margin:6px 0 10px"><button class="btn pri" data-act="cardzip" data-v="one">이 세트 ZIP 내려받기 (PNG 5장)</button><button class="btn" data-act="cardzip" data-v="o">대표성과 50선 ZIP (JPG 250장)</button><button class="btn" data-act="cardzip" data-v="p">대표 연구자 50인 ZIP (JPG 250장)</button><button class="btn" data-act="cardzip" data-v="all">전체 ZIP (JPG 500장)</button></div>
+    <p class="mute sm" id="cardnote">카드를 누르면 멈추거나 다시 재생됩니다. ZIP에는 각 카드의 완성 장면이 1080×1920 이미지로 담깁니다. 50선·50인·전체 묶음은 용량을 줄이려고 JPG로 만들며, 전체는 수십 초가 걸립니다.</p>
+    <div class="cardrow" id="cardstage">${specs.map(cardStill).join('')}</div>
+    <div class="cardcap">${['표지', '시작', '경로', '숫자로 보기', '기여와 메시지'].map((l, i) => `<span><b>${i + 1}</b> ${l}</span>`).join('')}</div>
+    ${foot('카드 뉴스')}
+  </section>`;
+};
+
 R.outreach = () => `<div class="chips subtabs">${SUBS.map(([v, l, t]) => `<button class="chip ${state.sub === v ? 'on' : ''}" data-act="sub" data-v="${v}">${l}</button>`).join('')}</div>${OUT[state.sub]()}`;
 
 /* ---------- 상세 ---------- */
@@ -743,6 +1099,79 @@ const media = (a, b) => `<div class="chips mt" style="gap:8px">${[a, 'AI 모션�
 const netSvg = it => {
   const ring = (n, rad, col) => Array.from({ length: n }, (_, i) => { const a = i / n * Math.PI * 2 + rad / 40, x = 150 + Math.cos(a) * rad, y = 105 + Math.sin(a) * rad * .78; return `<line x1="150" y1="105" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#D5DAE4"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${rad > 70 ? 5 : 7}" fill="${col}"/>`; }).join('');
   return `<svg class="chart" viewBox="0 0 300 210" role="img" aria-label="사제·공동연구 네트워크 도해" style="max-width:340px;margin:auto">${ring(Math.min(16, Math.round(it.coauthors / 6)), 96, '#3D9FE6')}${ring(Math.min(12, Math.round(it.alumni / 10)), 56, '#F6A53A')}<circle cx="150" cy="105" r="15" fill="#EC5C8D" stroke="#fff" stroke-width="3"/></svg>`;
+};
+
+// 영향경로 분석: 단계 간 시차, 기여 비중 변화, 지식 확산 연결망 지표(예시)를 한 구역으로 묶는다
+const pathStats = o => {
+  const r = rng(+o.id.slice(2) * 71 + 3), soft = o.domain === 'hs';
+  return { follow: 3 + Math.floor(r() * 12), cites: 120 + Math.floor(r() * 2300), patents: soft ? Math.floor(r() * 3) : 2 + Math.floor(r() * 38), transfer: soft ? Math.floor(r() * 2) : Math.floor(r() * 9), orgs: 3 + Math.floor(r() * 18) };
+};
+const pathAnalysis = it => {
+  const d = dom(it.domain), yrs = it.path.map(p => p.year), lags = [yrs[1] - yrs[0], yrs[2] - yrs[1], yrs[3] - yrs[2]], span = yrs[3] - yrs[0] || 1, keep = 2026 - yrs[3];
+  const peers = OUTCOMES.filter(o => o.domain === it.domain), avg = Math.round(peers.reduce((a, o) => a + o.path[3].year - o.path[0].year, 0) / peers.length);
+  const li = lags.indexOf(Math.max(...lags)), gov = it.mix.map(m => m[0]), ind = it.mix.map(m => m[3]), cross = it.mix.findIndex(m => m[3] > m[0]), st = pathStats(it), era = ERAS.find(e => e.id === it.era);
+  // 정부 지원·민간 투자 비중 추이 꺾은선
+  const W = 360, H = 150, x = i => 34 + i * (W - 60) / 3, y = v => 14 + (H - 44) * (1 - v / 80);
+  const line = (a, c) => `<polyline points="${a.map((v, i) => `${x(i)},${y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${a.map((v, i) => `<circle cx="${x(i)}" cy="${y(v).toFixed(1)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2.5"/><text x="${x(i)}" y="${(y(v) - 9).toFixed(1)}" text-anchor="middle" style="fill:${c};font-weight:700">${v}</text>`).join('')}`;
+  const chart = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="단계별 정부 지원·민간 투자 비중 추이" style="margin-top:6px">
+    ${[0, 40, 80].map(v => `<line x1="28" x2="${W - 14}" y1="${y(v)}" y2="${y(v)}" stroke="#DCE1EA"/><text x="24" y="${y(v) + 3}" text-anchor="end">${v}</text>`).join('')}
+    ${line(gov, FACTORS[0].color)}${line(ind, FACTORS[3].color)}
+    ${PATH_STAGES.map((s, i) => `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${i + 1}. ${s.split('·')[0]}</text>`).join('')}</svg>`;
+  const find = [
+    `<b>총 확산 기간 ${span}년</b> — ${d.short} 영역 평균 ${avg}년보다 ${span === avg ? '같은 수준' : `${Math.abs(span - avg)}년 ${span < avg ? '빠름' : '김'}`}`,
+    `<b>최장 구간</b>은 ${PATH_STAGES[li]} → ${PATH_STAGES[li + 1]} ${lags[li]}년(전체의 ${Math.round(lags[li] / span * 100)}%) — 후속 지원 연계가 확산 속도를 좌우한 구간`,
+    `<b>정부 지원 비중</b> ${gov[0]}% → ${gov[3]}%, <b>민간 투자</b> ${ind[0]}% → ${ind[3]}% — ${cross < 0 ? '전 단계에서 정부 지원이 우위' : `${cross + 1}단계(${PATH_STAGES[cross]})에서 민간 투자가 정부 지원을 넘어섬`}`,
+    `<b>재단 직접 지원 구간</b>은 1~2단계(${yrs[0]}~${yrs[2]}, ${yrs[2] - yrs[0]}년) — ${STORY[it.ctype].def}`,
+    keep > 0 ? `활용 단계 진입 후 <b>${keep}년째 지속</b> — 파급 범위·지속성 기준(C3)의 ${keep >= 10 ? '10년 이상 지속 활용 요건 충족' : '지속 활용 관측 중'}` : '활용 단계 진입 직후로 지속성 관측 필요',
+    ...(it.era === 'e5' || it.era === 'e4' ? [`<b>${era.label}</b> 출발 성과로 관측 기간이 짧아 시차 보정 점수 적용 대상`] : []),
+  ];
+  return `<div class="sec"><h3>영향경로 분석</h3><p class="mute sm">성과 사슬 연결(S2)과 네트워크·계량 분석으로 본 단계 간 시차와 기여 구조 · 수치는 예시</p>
+    <div class="lagbar">${lags.map((n, i) => `<div style="flex:${Math.max(n, 1)}" class="${G[(i + 3) % 4]}"><b>${n}년</b><small>${PATH_STAGES[i].split('·')[0]} → ${PATH_STAGES[i + 1].split('·')[0]}</small></div>`).join('')}${keep > 0 ? `<div style="flex:${keep}" class="keep"><b>${keep}년</b><small>활용 지속</small></div>` : ''}</div>
+    <div class="lagaxis">${yrs.map((v, i) => `<span style="flex:${i < 3 ? Math.max(lags[i], 1) : Math.max(keep, 0.001)}">${v}</span>`).join('')}<span style="flex:0">2026</span></div>
+    <div class="row c2" style="margin:18px 0 0;gap:22px">
+      <div><h4 class="h4">단계별 기여 비중 추이 (%)</h4>${chart}${legend([FACTORS[0], FACTORS[3]])}</div>
+      <div><h4 class="h4">분석 결과</h4><ul class="bul find">${find.map(f => `<li>${f}</li>`).join('')}</ul></div>
+    </div>
+    <h4 class="h4" style="margin-top:18px">지식 확산 연결망</h4>
+    <div class="row c5" style="margin:10px 0 0;gap:12px">${[[st.follow, '건', '과제-후속과제 연결'], [st.cites.toLocaleString(), '편', '인용 계보 논문'], [st.patents, '건', '특허·표준'], [st.transfer, '건', '기술이전·사업화'], [st.orgs, '곳', '공저·참여 기관']].map(([n, u, l]) => `<div class="tile" style="padding:12px 14px"><div class="n" style="font-size:20px">${n}<small> ${u}</small></div><div class="l">${l}</div></div>`).join('')}</div>
+    <p class="mute sm mt">인용·공저 네트워크와 과제-후속과제 연결망으로 지식 확산 경로와 핵심기반 기여를 실증하고, 지원 시점과 성과 도달 시점의 시차를 생애주기 지원 정책의 근거로 활용합니다.</p></div>`;
+};
+
+// 성장경로 분석: 단계별 체류 기간, 전환점 전후 성과 변화, 연속성·확산 지표(예시)를 한 구역으로 묶는다
+const growthStats = p => {
+  const r = rng(+p.id.slice(2) * 89 + 11), n = p.life.length, ti = Math.min(p.turn, n - 1);
+  const out = p.life.map((_, i) => Math.round([6, 18, 40, 68, 88][i] * (.8 + r() * .4) * (i >= ti && ti > 0 ? 1.3 : 1)));
+  return { ti, out, alum: p.life.map((_, i) => Math.round([0, 8, 30, 70, 100][i] * (i === n - 1 ? 1 : .85 + r() * .15))), dur: p.life.map((s, i) => (i + 1 < n ? p.life[i + 1].year : 2026) - s.year) };
+};
+const growthAnalysis = it => {
+  const d = dom(it.domain), n = it.life.length, st = growthStats(it), ti = st.ti, turn = it.life[ti], before = it.life[Math.max(0, ti - 1)], last = it.life[n - 1];
+  const peers = PEOPLE.filter(p => p.domain === it.domain), lead = peers.filter(p => p.life.length >= 4), avgLead = lead.length ? Math.round(lead.reduce((a, p) => a + p.life[3].year - p.y0, 0) / lead.length) : 0;
+  const step = n > 1 ? ((last.year - it.y0) / (n - 1)).toFixed(1) : '—', mv = peers.filter(p => p.life.length > 1), avgStep = (mv.reduce((a, p) => a + (p.life[p.life.length - 1].year - p.y0) / (p.life.length - 1), 0) / (mv.length || 1)).toFixed(1);
+  const jump = ti > 0 ? (st.out[ti] / Math.max(1, st.out[ti - 1])).toFixed(1) : null, mx = Math.max(100, ...st.out);
+  const W = 360, H = 150, x = i => 34 + i * (W - 60) / 4, y = v => 14 + (H - 44) * (1 - v / mx);
+  const line = (a, c) => `<polyline points="${a.map((v, i) => `${x(i)},${y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${a.map((v, i) => `<circle cx="${x(i)}" cy="${y(v).toFixed(1)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2.5"/><text x="${x(i)}" y="${(y(v) - 9).toFixed(1)}" text-anchor="middle" style="fill:${c};font-weight:700">${v}</text>`).join('')}`;
+  const chart = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="생애주기 단계별 성과 지수와 누적 배출 인력" style="margin-top:6px">
+    ${[0, 50, 100].map(v => `<line x1="28" x2="${W - 14}" y1="${y(v)}" y2="${y(v)}" stroke="#DCE1EA"/><text x="24" y="${y(v) + 3}" text-anchor="end">${v}</text>`).join('')}
+    ${ti > 0 ? `<line x1="${x(ti)}" x2="${x(ti)}" y1="10" y2="${H - 30}" stroke="#EC5C8D" stroke-width="1.5" stroke-dasharray="4 4"/><text x="${x(ti) + 5}" y="18" style="fill:#EC5C8D;font-weight:700">전환점</text>` : ''}
+    ${line(st.alum, '#F6A53A')}${line(st.out, d.color)}
+    ${LIFE.map((s, i) => `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" ${i < n ? '' : 'opacity=".4"'}>${i + 1}. ${s.split(' ')[0].split('·')[0]}</text>`).join('')}</svg>`;
+  const find = [
+    ti > 0 ? `<b>전환점 ${turn.year}년</b> ${turn.stage} 진입 — 직전 지원 「${before.program}」 이후 성과 지수 ${st.out[ti - 1]} → ${st.out[ti]} (${jump}배)` : `<b>전환점</b> 식별 전 — 첫 단계 진행 중`,
+    it.gap ? `<b>연속성</b> 지원 공백 ${it.gap}년 확인 — 공백 직후 단계 이동 지연 여부 인터뷰 확인 대상` : `<b>연속성</b> 단절 없는 후속 지원 — 누적 ${it.years}년, 과제 ${it.grants}건`,
+    `<b>단계 이동 속도</b> 평균 ${step}년 — ${d.short} 영역 평균 ${avgStep}년`,
+    n >= 4 ? `<b>리더 연구자 도달</b> 첫 지원 후 ${it.life[3].year - it.y0}년 — 영역 평균 ${avgLead}년보다 ${it.life[3].year - it.y0 === avgLead ? '같은 수준' : `${Math.abs(it.life[3].year - it.y0 - avgLead)}년 ${it.life[3].year - it.y0 < avgLead ? '빠름' : '김'}`}` : `<b>현재 ${last.stage}</b> 단계 — 5단계 중 ${n}단계 도달, 후속 지원 연계 관찰 대상`,
+    `<b>확산</b> 배출 인력 ${it.alumni}명 · 공동연구자 ${it.coauthors}명 · 연계 대표 성과 ${it.outcomes.length}건`,
+    `<b>역할 변화</b> ${ROLES[0]} → ${ROLES[n - 1]}`,
+  ];
+  return `<div class="sec"><h3>성장경로 분석</h3><p class="mute sm">지원 이력 × 성과 이력 × 역할 변화를 시계열로 결합한 전환점·연속성·확산 분석 · 수치는 예시</p>
+    <div class="lagbar">${st.dur.map((v, i) => `<div style="flex:${Math.max(v, 1)}" class="${G[i % 4]}"><b>${v}년</b><small>${it.life[i].stage}${i === ti && ti > 0 ? ' · 전환점' : ''}</small></div>`).join('')}</div>
+    <div class="lagaxis">${it.life.map((s, i) => `<span style="flex:${Math.max(st.dur[i], 1)}">${s.year}</span>`).join('')}<span style="flex:0">2026</span></div>
+    <div class="row c3" style="margin:16px 0 0;gap:14px">${[['전환점 분석', ti > 0 ? `${turn.year}<small> 년</small>` : '—', ti > 0 ? `${turn.stage} 진입 · 성과 지수 ${jump}배` : '식별 전'], ['연속성 분석', it.gap ? `${it.gap}<small> 년 공백</small>` : `${it.years}<small> 년 연속</small>`, it.gap ? '지원 공백의 영향 확인 필요' : '단절 없는 후속 지원'], ['확산 분석', `${it.alumni + it.coauthors}<small> 명</small>`, `배출 인력 ${it.alumni} · 공동연구자 ${it.coauthors}`]].map(([h, v, l]) => `<div class="tile" style="padding:14px 16px"><div class="l" style="font-weight:700">${h}</div><div class="n" style="font-size:24px">${v}</div><div class="l">${l}</div></div>`).join('')}</div>
+    <div class="row c2" style="margin:18px 0 0;gap:22px">
+      <div><h4 class="h4">단계별 성과 지수와 누적 배출 인력 (지수)</h4>${chart}${legend([{ label: '연구 성과 지수', color: d.color }, { label: '누적 배출 인력(현재=100)', color: '#F6A53A' }])}</div>
+      <div><h4 class="h4">분석 결과</h4><ul class="bul find">${find.map(f => `<li>${f}</li>`).join('')}</ul></div>
+    </div>
+    <p class="mute sm mt">전환점 분석으로 성장이 가속된 시점과 직전 지원 사업을 식별하고, 연속성 분석으로 단절 없는 후속 지원의 효과를, 확산 분석으로 제자·공동연구자 네트워크의 확장을 확인해 생애주기별 지원체계 개선의 근거로 씁니다.</p></div>`;
 };
 
 const detail = it => {
@@ -770,6 +1199,7 @@ const detail = it => {
     <div class="sec"><h3>2. 지원 이력 · 3. 영향경로</h3><p class="mute sm">현재의 활용 단계에서 초기 지원 과제까지 역추적한 경로 (지원사업 연계 기술·학술 발전 경로도)</p>
       <div class="flow">${it.path.map((p, i) => `${i ? arrow : ''}<div class="flow-item"><div class="blob ${G[(i + 3) % 4]} b${i % 3 + 1}">${i + 1}</div><div class="yr">${p.year}</div><h4>${PATH_STAGES[i]}</h4><p><b>${p.program}</b><br>${p.desc}</p></div>`).join('')}</div>
       ${tbl(['단계', '시기', '지원 사업', '연구 주체', '주요 산출물'], it.path.map((p, i) => [PATH_STAGES[i], p.year, p.program, PATH_ACTOR[i], PATH_OUT[i]]))}</div>
+    ${pathAnalysis(it)}
     <div class="row c2 sec" style="margin-bottom:0">
       <div><h3>4. 기여 유형·강도</h3>${info([['주 유형', `${s.k} ${it.ctype}`], ['부 유형', it.sub ? `${STORY[it.sub].k} ${it.sub}` : '<span class="mute">해당 없음</span>'], ['기여 강도', `${g.label} · 계수 ${g.coef.toFixed(1)}`], ['판정 근거(예)', g.ev], ['대안 설명', it.alts.map(a => `<span class="tag">${a}</span>`).join(' ') || '<span class="mute">확인된 병행 요인 없음</span>']])}</div>
       <div><h3>단계별 기여 구성</h3>${it.mix.map((mm, i) => `<div class="srow" style="grid-template-columns:100px 1fr"><span class="sm">${PATH_STAGES[i]}</span>${stack(mm)}</div>`).join('')}${legend(FACTORS)}</div>
@@ -788,10 +1218,10 @@ const detail = it => {
     <div class="sec"><h3>성장 궤적 · 연구자 생애주기 성장 흐름도</h3><p class="mute sm">지원 이력 × 성과 이력 × 역할 변화를 시계열로 결합</p>
       <div class="flow">${it.life.map((p, i) => `${i ? arrow : ''}<div class="flow-item"><div class="blob ${G[i % 4]} b${i % 3 + 1}" style="width:${56 + i * 7}px;height:${52 + i * 7}px">${i + 1}</div><div class="yr">${p.year}${p === turn ? ' · 전환점' : ''}</div><h4>${p.stage}</h4><p><b>${p.program}</b><br>${p.out}</p></div>`).join('')}</div></div>
     <div class="sec"><h3>지원 이력</h3>${tbl(['지원 단계', '시기', '사업(유형 예시)', '역할', '주요 산출'], it.life.map((p, i) => [p.stage, `${p.year}~`, p.program, ROLES[i], p.out]))}</div>
+    ${growthAnalysis(it)}
     <div class="sec"><h3>성과 이력</h3><div class="row c5" style="margin:12px 0 0;gap:14px">${[[it.papers, '편', '대표 논문·저서'], [it.patents, '건', '특허·기술이전'], [it.awards, '회', '수상'], [it.startup ? '있음' : '—', '', '창업'], [it.policy, '건', '정책·자문 활동']].map(([n, u, l]) => `<div class="tile"><div class="n" style="font-size:22px">${n}<small> ${u}</small></div><div class="l">${l} (예시)</div></div>`).join('')}</div></div>
     <div class="row c2 sec" style="margin-bottom:0">
-      <div><h3>성장경로 분석</h3>${info([['전환점', `${turn.year}년 ${turn.stage} 진입 · 직전 지원 「${before.program}」`], ['연속성', it.gap ? `지원 공백 ${it.gap}년 확인 · 누적 지원 ${it.years}년` : `단절 없는 후속 지원 · 누적 ${it.years}년`], ['확산', `배출 인력 ${it.alumni}명 · 공동연구자 ${it.coauthors}명`], ['대표성', P_GUIDE[it.guide]]])}
-        <h3 class="mt2">기여 강도 · ${g.label}</h3><div class="story">${g.def}<br><span class="mute">판정 근거(예): ${g.ev}</span></div></div>
+      <div><h3>기여 강도 · ${g.label}</h3><div class="story">${g.def}<br><span class="mute">판정 근거(예): ${g.ev}</span></div></div>
       <div><h3>확산 네트워크 · 사제·공동연구</h3>${netSvg(it)}${legend([{ label: '대표 연구자', color: '#EC5C8D' }, { label: `배출 인력 ${it.alumni}명`, color: '#F6A53A' }, { label: `공동연구자 ${it.coauthors}명`, color: '#3D9FE6' }])}<p class="mute sm mt">점의 수는 규모를 줄여 나타낸 약식 도해입니다.</p></div>
     </div>
     <div class="sec"><h3>사례 콘텐츠</h3>${info([['국민 체감 메시지', `<b>${FEEL[it.guide]}</b>`], ['인터뷰 요지', '<span class="mute">심층 인터뷰 후 수록 · 연구 출발과 첫 지원, 성장의 전환점, 후속세대 양성, 정책 제언</span>'], ['대표 일화', '<span class="mute">생애사 중심 원고 작성 시 대상 연구자 사실 확인을 거쳐 수록</span>']])}${media('생애사 사례 원고', '대표 연구자 50인 백서 수록')}</div>
@@ -803,9 +1233,9 @@ const render = () => {
   const i = VIEWS.findIndex(v => v.id === state.view), v = VIEWS[i];
   if (v.kind) state.kind = v.kind;
   $('#nav').innerHTML = VIEWS.map((q, j) => `<button class="nav-item ${q.id === v.id ? 'on' : ''}" data-act="nav" data-v="${q.id}"><span class="nav-ic ${G[j % 4]}">0${j + 1}</span>${q.t.join(' ')}</button>${q.id === 'outreach' ? `<div class="nav-subs">${SUBS.map(([sv, sl]) => `<button class="nav-sub ${v.id === 'outreach' && state.sub === sv ? 'on' : ''}" data-act="nav" data-v="outreach:${sv}">${sl}</button>`).join('')}</div>` : ''}`).join('');
-  $('#main').innerHTML = `<header class="page-head"><div><div class="dots"><i></i><i></i><i></i></div><h1>${v.t[0]} <b>${v.t[1]}</b></h1><p>${v.id === 'outreach' && state.sub !== 'plan' ? `<b style="color:var(--ink)">${SUBS.find(x => x[0] === state.sub)[1]}</b> · ${SUBS.find(x => x[0] === state.sub)[2]} 시각화 자료 예제` : v.sub}</p></div><div class="badge-no"><span>0${i + 1}</span></div></header>${R[v.id]()}
+  $('#main').innerHTML = `<header class="page-head"><div><div class="dots"><i></i><i></i><i></i></div><h1>${v.t[0]} <b>${v.t[1]}</b></h1><p>${v.id === 'outreach' && state.sub !== 'plan' ? `<b style="color:var(--ink)">${SUBS.find(x => x[0] === state.sub)[1]}</b> · ${SUBS.find(x => x[0] === state.sub)[2]} ${state.sub === 'cards' ? '확산 콘텐츠' : '시각화 자료 예제'}` : v.sub}</p></div><div class="badge-no"><span>0${i + 1}</span></div></header>${R[v.id]()}
     <footer class="site-foot"><div class="dots sm"><i></i><i></i><i></i></div>한국연구재단 <span>|</span> 한국외국어대학교(연구책임자: 박정원 교수)</footer>`;
-  renderGrid(); renderRank(); mountMap();
+  renderGrid(); renderRank(); mountMap(); mountGraph(); mountCards();
 };
 const openModal = id => { const m = $('#modal'); m.innerHTML = detail(byId(id)); m.hidden = false; };
 const closeModal = () => { $('#modal').hidden = true; };
@@ -814,6 +1244,34 @@ const ACT = {
   nav: v => { const [a, b] = v.split(':'); state.view = a; if (a === 'outreach') state.sub = b || 'plan'; closeModal(); render(); window.scrollTo(0, 0); },
   sub: v => { state.sub = v; render(); window.scrollTo(0, 0); },
   region: v => { state.region = v; render(); },
+  card: v => { state.card = v; render(); },
+  cardzip: async (v, t) => {
+    if (gc.busy) return; gc.busy = true;
+    const label = t.textContent, items = v === 'one' ? [cardItem()] : v === 'all' ? [...cardTop('o'), ...cardTop('p')] : cardTop(v);
+    try {
+      const blob = await buildCardZip(items, (d, n) => { t.textContent = `만드는 중 ${d}/${n}`; }, v !== 'one');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = { one: `카드뉴스_${items[0].id}.zip`, o: '카드뉴스_대표성과50선.zip', p: '카드뉴스_대표연구자50인.zip', all: '카드뉴스_대표성과50선_대표연구자50인.zip' }[v]; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      t.textContent = '내려받기 완료';
+    } catch (e) { t.textContent = '만들기 실패'; console.error(e); }
+    gc.busy = false; setTimeout(() => { if (t.isConnected) t.textContent = label; }, 2500);
+  },
+  cardstep: v => { const all = [...cardTop('o'), ...cardTop('p')], i = all.findIndex(x => x.id === cardItem().id); state.card = all[(i + +v + all.length) % all.length].id; render(); },
+  gshow: v => { gx.show[v] = !gx.show[v]; render(); },
+  gtype: v => { gx.types[v] = !gx.types[v]; render(); },
+  gdom: v => { gx.domain = v; render(); },
+  gscope: v => { gx.scope = v; render(); },
+  gcolor: v => { gx.color = v; render(); },
+  gsizem: v => { gx.size = v; render(); },
+  gsel: v => { gx.sel = v || null; gx.path = null; gx.pathMode = false; const n = gx.V.find(x => x.id === v); if (n) { const k = Math.max(gx.tf.k, 1.25); gx.auto = false; gx.cam = { k, x: -n.x * k, y: -n.y * k }; } gHl(); gPanel(); },
+  gdepth: v => { gx.depth = +v; gHl(); gPanel(); },
+  gpathmode: () => { gx.pathMode = !gx.pathMode; gPanel(); },
+  gclear: () => { gx.path = null; gHl(); gPanel(); },
+  gfit: () => { gx.auto = false; gx.cam = gFitTarget(); },
+  grelayout: () => { gx.pos = {}; gx.tf = { x: 0, y: 0, k: 1 }; gx.year = 2026; gx.playing = false; render(); },
+  gplay: () => { if (!gx.playing && gx.vy >= 2026) { gx.V = []; gx.vy = null; gSetYear(1977, true); } gx.playing = !gx.playing; gx.auto = true; gBtn(); },
+  gfull: () => { const w = $('.graph-wrap'); document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen?.(); },
+  gpng: () => { const a = document.createElement('a'); a.href = gx.cv.toDataURL('image/png'); a.download = 'research-network.png'; a.click(); },
   focus: v => { const m = (gm.marks || []).find(x => x.oid === v); if (m) { gm.map.panTo(m.getPosition()); google.maps.event.trigger(m, 'click'); } else openModal(v); },
   jump: v => document.getElementById(v)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
   era: v => { state.era = v; render(); },
@@ -822,7 +1280,7 @@ const ACT = {
   rankby: v => { state.rankBy = v; render(); },
   domain: v => { state.f[state.kind].domain = v; render(); },
   open: openModal, close: closeModal,
-  stage: (v, t) => { state.status[t.dataset.id] = +v; store.set('nrf50.status', state.status); render(); openModal(t.dataset.id); },
+  stage: (v, t) => { state.status[t.dataset.id] = +v; store.set('nrf50.status', state.status); gc.top = null; render(); openModal(t.dataset.id); },
   resetw: () => { state.w[state.kind] = [25, 25, 25, 25]; render(); },
   print: () => window.print(),
   export: () => {
@@ -842,6 +1300,9 @@ document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset.w !== undefined) { state.w[state.kind][+t.dataset.w] = +t.value; $('#w' + t.dataset.w).textContent = t.value; renderRank(); }
   else if (t.dataset.q !== undefined) { state.f[state.kind].q = t.value; renderGrid(); }
+  else if (t.dataset.gq !== undefined) gx.q = t.value;
+  else if (t.dataset.gyear !== undefined) { gx.playing = false; gSetYear(+t.value, true); gBtn(); }
+  else if (t.dataset.gf !== undefined) { gx.force[t.dataset.gf] = +t.value; $('#gf-' + t.dataset.gf).textContent = t.value; gx.alpha = Math.max(gx.alpha, .6); }
 });
 document.addEventListener('change', e => {
   const k = e.target.dataset.sel, p = e.target.dataset.pick;
