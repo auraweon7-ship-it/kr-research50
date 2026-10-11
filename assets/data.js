@@ -80,6 +80,16 @@ const STORY = {
   '인재양성 기여': { k: 'D', def: '지원받은 연구자·학생이 성과의 주역으로 성장', arc: ['학생', '연구자', '리더', '다음 세대'], q: '지원이 어떤 사람을 키웠나', ev: '연구자 이력, 사제 네트워크' },
 };
 
+// 표준 사례 양식·프로필 DB용 보조 정보
+const PATH_ACTOR = ['재단 지원 과제 · 대학 연구실', '연속·확장 지원 · 공동연구', '연구기관 · 타 부처 R&D', '기업 · 공공기관'];
+const PATH_OUT = ['논문·학술 발표', '후속 논문·공동연구 성과', '특허·표준·학설·DB', '제품·서비스·정책·문화'];
+const FEEL = {
+  G1: '교과서와 세계 학계가 인용하는 한국발 연구', G2: '일상에서 쓰는 제품·서비스 속 기술', G3: '건강·안전·환경 등 생활 문제의 해결',
+  G4: '공급망과 안보를 지키는 전략기술의 뿌리', G5: '제도와 정책, 사회적 논의를 바꾼 지식', G6: '세계가 함께 찾는 한국의 연구 파트너십',
+  P1: '세계가 인정한 연구자, 그 출발점의 첫 지원', P2: '한 사람의 연구실에서 자라난 다음 세대', P3: '연구가 사회와 산업의 문제를 푼 이야기',
+  P4: '실험실 기술이 기업이 되기까지', P5: '원천기술이 산업 현장으로 건너간 길', P6: '연구가 정책과 공론장을 움직인 순간',
+};
+const ROLES = ['학생·박사후연구원', '연구책임자(첫 독립 과제)', '연구책임자', '센터장·연구단장', '멘토·자문'];
 const O_RAW = [
   ['차세대 이차전지 양극 소재 원천기술', 'rd', 'G4'], ['메모리 반도체 신소자 구조 기초연구', 'rd', 'G4'], ['mRNA 전달체 플랫폼 기초연구', 'rd', 'G3'],
   ['그래핀 대면적 합성 기술', 'rd', 'G1'], ['유전자가위 교정 정밀도 향상 연구', 'rd', 'G1'], ['페로브스카이트 태양전지 효율 향상', 'rd', 'G1'],
@@ -160,6 +170,7 @@ const OUTCOMES = O_RAW.map(([title, domain, guide], i) => {
     mix: [0, 1, 2, 3].map(s => mix(r, s, domain)),
     grade: pick(GRADE_BY[ctype]), invest: Math.round(10 ** (0.3 + r() * 2.2)),
     alts: ALTS.filter(() => r() < .45),
+    sub: r() < .55 ? CTYPES.filter(c => c !== ctype)[Math.floor(r() * 3)] : '', ev: Math.floor(r() * 5),
     people: [],
   };
 });
@@ -178,6 +189,9 @@ const PEOPLE = P_RAW.map(([field, domain], i) => {
     track: t < .5 ? 'both' : t < .78 ? 'forward' : 'reverse',
     life: offs.map((o, k) => ({ stage: LIFE[k], year: y0 + o, program: LIFE_PROG[domain][k], out: LIFE_OUT[k] })).filter(l => l.year <= 2026),
     grants: 6 + Math.floor(r() * 14), years: 14 + Math.floor(r() * 22), alumni: 20 + Math.floor(r() * 120),
+    papers: 40 + Math.floor(r() * 260), patents: Math.floor(r() * (domain === 'hs' ? 2 : 40)), awards: 1 + Math.floor(r() * 8),
+    startup: domain !== 'hs' && r() < .25, policy: Math.floor(r() * 12), coauthors: 15 + Math.floor(r() * 90),
+    turn: 1 + Math.floor(r() * 3), gap: r() < .6 ? 0 : 1 + Math.floor(r() * 3), consent: r() < .5, ev: Math.floor(r() * 5),
     outcomes: links,
   };
 });
