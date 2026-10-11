@@ -887,7 +887,7 @@ const openPop = (o, marker) => {
   const box = document.createElement('div'); box.className = 'gpop';
   box.innerHTML = `<div class="gpop-stage">${popFallback(o)}</div><div class="gpop-foot"><span class="mute sm">${dom(o.domain).label} · ${O_GUIDE[o.guide]}</span><button class="btn" data-act="open" data-v="${o.id}">성과 상세</button></div>`;
   gm.info.setContent(box); gm.info.open({ map: gm.map, anchor: marker });
-  import('./popup-remotion.js').then(m => { const st = document.createElement('div'); gm.un = m.mount(st, popData(o)); box.firstChild.replaceChildren(st); }).catch(() => { /* CDN 차단 시 CSS 카드 유지 */ });
+  import(`./popup-remotion.js?v=${CONFIG.VERSION}`).then(m => { const st = document.createElement('div'); gm.un = m.mount(st, popData(o)); box.firstChild.replaceChildren(st); }).catch(() => { /* CDN 차단 시 CSS 카드 유지 */ });
 };
 const drawMarkers = () => {
   (gm.marks || []).forEach(m => m.setMap(null)); (gm.rings || []).forEach(c => c.setMap(null)); gm.info.close();
@@ -1068,7 +1068,7 @@ const mountCards = () => {
   gc.un?.(); gc.un = null;
   const el = $('#cardstage'); if (!el) return;
   const it = cardItem(), specs = cardSpecs(it, cardTop(it.kind).findIndex(x => x.id === it.id) + 1);
-  import('./cards-remotion.js').then(m => { if (el.isConnected) gc.un = m.mount(el, specs); }).catch(() => { const n = $('#cardnote'); if (n) n.textContent = '모션그래픽 모듈을 불러오지 못해 정지 카드로 표시합니다.'; });
+  import(`./cards-remotion.js?v=${CONFIG.VERSION}`).then(m => { if (el.isConnected) gc.un = m.mount(el, specs); }).catch(() => { const n = $('#cardnote'); if (n) n.textContent = '모션그래픽 모듈을 불러오지 못해 정지 카드로 표시합니다.'; });
 };
 OUT.cards = () => {
   const it = cardItem(), k = it.kind, rank = cardTop(k).findIndex(x => x.id === it.id) + 1, specs = cardSpecs(it, rank);
