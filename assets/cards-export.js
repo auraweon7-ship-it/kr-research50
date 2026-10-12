@@ -92,20 +92,60 @@ const CDRAW = {
   },
 };
 
-const drawCard = (s, idx) => {
-  const cv = document.createElement('canvas'); cv.width = CW; cv.height = CH;
-  const c = cv.getContext('2d'); c.textBaseline = 'top';
+// 배경(움직이는 도형)과 내용을 나눠 그린다. t는 초 단위 시간으로, 영상에서 배경 도형을 움직이는 데 쓴다
+const cardBg = (c, s, t = 0) => {
   const g = c.createLinearGradient(0, 0, CW * .6, CH); g.addColorStop(0, s.color); g.addColorStop(.22, s.color); g.addColorStop(.82, CINK); g.addColorStop(1, CINK);
-  c.fillStyle = g; c.fillRect(0, 0, CW, CH);
-  c.fillStyle = '#fff'; c.globalAlpha = .13; c.beginPath(); c.ellipse(1000, 110, 310, 280, .5, 0, 7); c.fill();
-  c.globalAlpha = .09; c.beginPath(); c.ellipse(55, 1650, 165, 155, -.4, 0, 7); c.fill(); c.globalAlpha = 1;
+  c.globalAlpha = 1; c.fillStyle = g; c.fillRect(0, 0, CW, CH);
+  c.fillStyle = '#fff'; c.globalAlpha = .13; c.beginPath(); c.ellipse(1000 + Math.sin(t * 1.1) * 30, 110 + Math.cos(t * .9) * 24, 310, 280, .5 + t * .12, 0, 7); c.fill();
+  c.globalAlpha = .09; c.beginPath(); c.ellipse(55, 1650 + Math.sin(t * 1.5) * 26, 165, 155, -.4 - t * .1, 0, 7); c.fill(); c.globalAlpha = 1;
+};
+const cardFg = (c, s, idx) => {
+  c.textBaseline = 'top'; c.textAlign = 'left';
   ['#EC5C8D', '#F6A53A', '#27B894'].forEach((col, i) => { c.fillStyle = '#fff'; rr(c, 80 + i * 38, 84, 28, 28, 8); c.fill(); c.fillStyle = col; rr(c, 83 + i * 38, 87, 22, 22, 6); c.fill(); });
   c.fillStyle = '#fff'; c.font = `700 36px ${CF}`; c.fillText('대한민국 연구 50년', 208, 80);
   let dx = 1000; for (let i = 4; i >= 0; i--) { const w = i === idx ? 54 : 18; dx -= w; c.globalAlpha = i === idx ? 1 : .4; rr(c, dx, 89, w, 18, 9); c.fill(); dx -= 12; }
   c.font = `400 27px ${CF}`; c.globalAlpha = .8; c.fillText('한국연구재단 | 한국외국어대학교', 80, 1812); c.textAlign = 'right'; c.fillText(`${s.ref} · 예시 데이터`, 1000, 1812); c.textAlign = 'left'; c.globalAlpha = 1;
   const kick = y => { rr(c, 80, y + 16, 70, 8, 4); c.fill(); c.font = `700 40px ${CF}`; c.globalAlpha = .9; c.fillText(s.kicker, 168, y); c.globalAlpha = 1; return y + 48; };
   CDRAW[s.type](c, s, kick);
+};
+const drawCard = (s, idx) => {
+  const cv = document.createElement('canvas'); cv.width = CW; cv.height = CH;
+  const c = cv.getContext('2d'); cardBg(c, s); cardFg(c, s, idx);
   return cv;
+};
+
+/* --- MP4 만들기: 카드 5장을 이어 붙인 세로 영상(H.264). 브라우저의 WebCodecs로 인코딩하고 mp4-muxer로 담는다 --- */
+const VFPS = 30, CARD_SEC = 5, BAND = 160;
+const cardVideo = async (specs, onStep = () => {}) => {
+  if (!('VideoEncoder' in window)) throw new Error('unsupported');
+  await Promise.all(['400', '600', '700', '800'].map(w => document.fonts.load(`${w} 40px Pretendard`))).catch(() => {});
+  let codec = null;
+  for (const cd of ['avc1.640028', 'avc1.4d0028', 'avc1.42002a', 'avc1.640032']) { try { if ((await VideoEncoder.isConfigSupported({ codec: cd, width: CW, height: CH, bitrate: 4e6, framerate: VFPS })).supported) { codec = cd; break; } } catch (e) { /* 다음 후보 */ } }
+  if (!codec) throw new Error('unsupported');
+  const { Muxer, ArrayBufferTarget } = await import('https://esm.sh/mp4-muxer@5');
+  const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: CW, height: CH }, fastStart: 'in-memory' });
+  let err = null;
+  const enc = new VideoEncoder({ output: (ch, meta) => muxer.addVideoChunk(ch, meta), error: e => { err = e; } });
+  enc.configure({ codec, width: CW, height: CH, bitrate: 4_000_000, framerate: VFPS });
+  const cv = document.createElement('canvas'); cv.width = CW; cv.height = CH; const c = cv.getContext('2d');
+  const per = CARD_SEC * VFPS, ease = x => 1 - Math.pow(1 - Math.max(0, Math.min(1, x)), 3); let n = 0;
+  for (let ci = 0; ci < specs.length; ci++) {
+    const s = specs[ci], fg = document.createElement('canvas'); fg.width = CW; fg.height = CH; cardFg(fg.getContext('2d'), s, ci);
+    for (let f = 0; f < per; f++, n++) {
+      const t = f / VFPS, out = f > per - 9 ? (per - f) / 9 : 1;
+      cardBg(c, s, t + ci * CARD_SEC);
+      // 내용은 위에서부터 띠 단위로 떠오르며 나타난다
+      for (let k = 0; k * BAND < CH; k++) { const a = ease((t - .12 - k * .06) / .45); if (a <= 0) continue; c.globalAlpha = a * out; c.drawImage(fg, 0, k * BAND, CW, BAND, 0, k * BAND + (1 - a) * 46, CW, BAND); }
+      c.globalAlpha = 1;
+      const vf = new VideoFrame(cv, { timestamp: Math.round(n * 1e6 / VFPS), duration: Math.round(1e6 / VFPS) });
+      enc.encode(vf, { keyFrame: n % 60 === 0 }); vf.close();
+      if (enc.encodeQueueSize > 6) await new Promise(r => { const iv = setInterval(() => { if (enc.encodeQueueSize <= 2 || err) { clearInterval(iv); r(); } }, 4); });
+      if (err) throw err;
+    }
+    onStep(ci + 1, specs.length);
+  }
+  await enc.flush(); muxer.finalize();
+  return new Blob([muxer.target.buffer], { type: 'video/mp4' });
 };
 // jpg=true면 용량이 작은 JPEG(품질 0.92)로 만든다
 const cardImage = async (s, idx, jpg) => new Uint8Array(await (await new Promise(res => drawCard(s, idx).toBlob(res, jpg ? 'image/jpeg' : 'image/png', .92))).arrayBuffer());
