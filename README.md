@@ -100,7 +100,7 @@ assets/
 supabase/schema.sql    공유 저장소 표 정의
 ```
 
-배포할 때는 `config.js` 의 `VERSION` 과 `index.html` 의 `?v=` 값을 함께 올립니다. 브라우저가 옛 파일을 쓰지 않게 하는 값입니다.
+배포할 때는 `config.js` 의 `VERSION`, `index.html` 의 `?v=` 값과 맨 위 스크립트의 `BUILD` 값을 함께 올립니다. 브라우저가 옛 파일을 붙들고 있으면 이 값을 비교해 자동으로 새 버전을 받습니다.
 
 ## 그 밖의 기능
 
