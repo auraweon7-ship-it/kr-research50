@@ -21,7 +21,9 @@ const dsCfg = () => LS.get('nrf50.dsapi', { keys: {}, tpl: {}, custom: [], mailt
 const dsSave = c => LS.set('nrf50.dsapi', c);
 const dsSources = () => [...DS_SRC, ...dsCfg().custom.map(c => ({ ...c, custom: true, key: c.url.includes('{key}') ? '필수' : '없음', proxy: c.proxy, desc: `직접 추가한 API · ${c.type.toUpperCase()}` }))];
 state.dsub = 'search';
-state.ds = { raw: [], fresh: null, srv: { keys: [], auth: false }, q: '', from: 1977, to: 2026, n: 25, nrf: false, on: Object.fromEntries(DS_SRC.map(s => [s.id, !!s.on])), st: {}, res: [], dup: 0, sel: new Set(), dom: 'rd', proxy: null, run: false };
+const QF0 = () => ({ scope: 'all', type: '', field: '', lang: '', sort: 'rel', minCite: 0, oa: false, kr: false });
+const RF0 = () => ({ src: '', y0: '', y1: '', minCite: '', type: '', topic: '', author: '', venue: '', nrf: false, award: false, doi: false, oa: false, fresh: false });
+state.ds = { qf: QF0(), rf: RF0(), raw: [], fresh: null, srv: { keys: [], auth: false }, q: '', from: 1977, to: 2026, n: 25, nrf: false, on: Object.fromEntries(DS_SRC.map(s => [s.id, !!s.on])), st: {}, res: [], dup: 0, sel: new Set(), dom: 'rd', proxy: null, run: false };
 
 /* ---------- 요청 ---------- */
 // 중계 서버 상태: 서버에 공용 키가 있는 출처(keys)와 이 브라우저의 관리자 로그인 여부(auth)도 함께 받는다
@@ -47,39 +49,65 @@ const dsGet = async (src, url, headers = {}) => {
 };
 const enc = encodeURIComponent;
 const httpUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
-const rec = (src, o) => ({ src, title: String(o.title || '').trim() || '(제목 없음)', year: +o.year || null, authors: (o.authors || []).filter(Boolean).slice(0, 6), venue: o.venue || '', cites: Number.isFinite(+o.cites) && o.cites !== '' && o.cites !== null ? +o.cites : null, doi: (o.doi || '').replace(/^https?:\/\/doi\.org\//i, ''), url: httpUrl(o.url), nrf: !!o.nrf, award: String(o.award || '').replace(/\u([0-9a-f]{4})/gi, (m, h) => String.fromCharCode(parseInt(h, 16))), topics: (o.topics || []).filter(Boolean) });
+const rec = (src, o) => ({ src, title: String(o.title || '').trim() || '(제목 없음)', year: +o.year || null, authors: (o.authors || []).filter(Boolean).slice(0, 6), venue: o.venue || '', cites: Number.isFinite(+o.cites) && o.cites !== '' && o.cites !== null ? +o.cites : null, doi: (o.doi || '').replace(/^https?:\/\/doi\.org\//i, ''), url: httpUrl(o.url), nrf: !!o.nrf, award: String(o.award || '').replace(/\u([0-9a-f]{4})/gi, (m, h) => String.fromCharCode(parseInt(h, 16))), topics: (o.topics || []).filter(Boolean), type: o.type || '', oa: o.oa ?? null, lang: o.lang || '' });
+
+// 검색 조건 필터(qf)를 출처마다 지원하는 만큼 요청에 싣는다. 지원하지 않는 조건은 결과 필터로 걸러진다
+const QF_TYPES = [['', '전체 유형'], ['article', '학술 논문'], ['review', '리뷰'], ['book', '도서·도서 장'], ['proceedings', '학술대회 발표'], ['dissertation', '학위논문'], ['preprint', '프리프린트']];
+const QF_FIELDS = [['', '전체 분야'], ['22', '공학'], ['25', '재료과학'], ['16', '화학'], ['15', '화학공학'], ['31', '물리·천문'], ['17', '컴퓨터과학'], ['26', '수학'], ['21', '에너지'], ['23', '환경과학'], ['19', '지구·행성과학'],
+  ['13', '생화학·유전·분자생물'], ['24', '면역·미생물'], ['27', '의학'], ['28', '신경과학'], ['30', '약학·독성학'], ['11', '농업·생물과학'], ['33', '사회과학'], ['20', '경제·계량·금융'], ['14', '경영·회계'], ['32', '심리학'], ['12', '예술·인문'], ['18', '의사결정과학']];
+// 출처별로 요청 단계에서 반영하는 조건 (나머지는 받아온 뒤 결과 필터로 거른다)
+const QF_SUPPORT = { openalex: ['scope', 'type', 'oa', 'lang', 'kr', 'minCite', 'sort', 'field'], crossref: ['scope', 'type', 'sort'], ncbi: ['scope', 'type', 'oa', 'lang', 'kr', 'sort'], s2: ['type', 'oa', 'minCite'], scopus: ['scope', 'type', 'oa', 'lang', 'kr', 'sort'] };
+const QF_LABEL = { scope: '제목만', type: '문헌 유형', oa: '오픈 액세스', lang: '언어', kr: '한국 기관', minCite: '최소 피인용', sort: '정렬', field: '분야' };
+const qfOf = o => o.qf || {};
 
 const DS_RUN = {
   async openalex(s, o, key) {
-    const f = [`publication_year:${o.from}-${o.to}`, ...(o.nrf ? [`funders.id:${NRF_OA}`] : [])].join(',');
-    const sel = 'id,title,publication_year,cited_by_count,doi,authorships,primary_location,primary_topic,funders,awards';
-    const d = await (await dsGet(s, `https://api.openalex.org/works?search=${enc(o.q)}&filter=${f}&per-page=${Math.min(o.n, 200)}&page=${o.page || 1}&select=${sel}${key ? `&api_key=${enc(key)}` : ''}${dsCfg().mailto ? `&mailto=${enc(dsCfg().mailto)}` : ''}`)).json();
+    const q = qfOf(o), T = { article: 'article', review: 'review', book: 'book|book-chapter', proceedings: 'article', dissertation: 'dissertation', preprint: 'preprint' };
+    const f = [`publication_year:${o.from}-${o.to}`, ...(o.nrf ? [`funders.id:${NRF_OA}`] : []), ...(q.scope === 'title' ? [`title.search:${o.q.replace(/,/g, ' ')}`] : []),
+      ...(q.type ? [`type:${T[q.type]}`] : []), ...(q.type === 'proceedings' ? ['primary_location.source.type:conference'] : []), ...(q.oa ? ['is_oa:true'] : []), ...(q.lang ? [`language:${q.lang}`] : []),
+      ...(q.kr ? ['institutions.country_code:KR'] : []), ...(q.minCite > 0 ? [`cited_by_count:>${q.minCite - 1}`] : []), ...(q.field ? [`primary_topic.field.id:${q.field}`] : [])].map(x => x.split(':').map((p, i) => i ? enc(p).replace(/%7C/g, '|').replace(/%3E/g, '>') : p).join(':')).join(',');
+    const sort = q.sort === 'new' ? '&sort=publication_date:desc' : q.sort === 'cite' ? '&sort=cited_by_count:desc' : '';
+    const sel = 'id,title,publication_year,cited_by_count,doi,authorships,primary_location,primary_topic,funders,awards,type,open_access,language';
+    const d = await (await dsGet(s, `https://api.openalex.org/works?${q.scope === 'title' ? '' : `search=${enc(o.q)}&`}filter=${f}${sort}&per-page=${Math.min(o.n, 200)}&page=${o.page || 1}&select=${sel}${key ? `&api_key=${enc(key)}` : ''}${dsCfg().mailto ? `&mailto=${enc(dsCfg().mailto)}` : ''}`)).json();
     return { total: d.meta?.count, rows: (d.results || []).map(w => rec('OpenAlex', { title: w.title, year: w.publication_year, authors: (w.authorships || []).map(a => a.author?.display_name), venue: w.primary_location?.source?.display_name, cites: w.cited_by_count, doi: w.doi, url: w.doi || w.id,
-      nrf: (w.funders || []).some(f => f.id?.endsWith(NRF_OA)), award: (w.awards || []).filter(a => a.funder_id?.endsWith(NRF_OA) && a.funder_award_id).map(a => a.funder_award_id).join(', '), topics: [w.primary_topic?.field?.display_name, w.primary_topic?.display_name] })) };
+      nrf: (w.funders || []).some(f => f.id?.endsWith(NRF_OA)), award: (w.awards || []).filter(a => a.funder_id?.endsWith(NRF_OA) && a.funder_award_id).map(a => a.funder_award_id).join(', '), topics: [w.primary_topic?.field?.display_name, w.primary_topic?.display_name],
+      type: w.primary_location?.source?.type === 'conference' ? 'proceedings' : w.type, oa: w.open_access?.is_oa, lang: w.language })) };
   },
   async crossref(s, o) {
-    const f = [`from-pub-date:${o.from}`, `until-pub-date:${o.to}`, ...(o.nrf ? [`funder:${NRF_CR}`] : [])].join(',');
-    const d = await (await dsGet(s, `https://api.crossref.org/works?query=${enc(o.q)}&rows=${Math.min(o.n, 100)}&offset=${((o.page || 1) - 1) * Math.min(o.n, 100)}&filter=${f}&select=DOI,title,issued,author,container-title,is-referenced-by-count,funder,subject${dsCfg().mailto ? `&mailto=${enc(dsCfg().mailto)}` : ''}`)).json();
+    const q = qfOf(o), T = { article: 'journal-article', book: 'book,type:book-chapter', proceedings: 'proceedings-article', dissertation: 'dissertation', preprint: 'posted-content' };
+    const f = [`from-pub-date:${o.from}`, `until-pub-date:${o.to}`, ...(o.nrf ? [`funder:${NRF_CR}`] : []), ...(q.type && T[q.type] ? [`type:${T[q.type]}`] : [])].join(',');
+    const sort = q.sort === 'new' ? '&sort=published&order=desc' : q.sort === 'cite' ? '&sort=is-referenced-by-count&order=desc' : '';
+    const d = await (await dsGet(s, `https://api.crossref.org/works?${q.scope === 'title' ? 'query.bibliographic' : 'query'}=${enc(o.q)}&rows=${Math.min(o.n, 100)}&offset=${((o.page || 1) - 1) * Math.min(o.n, 100)}&filter=${f}${sort}&select=DOI,title,issued,author,container-title,is-referenced-by-count,funder,subject,type${dsCfg().mailto ? `&mailto=${enc(dsCfg().mailto)}` : ''}`)).json();
     return { total: d.message?.['total-results'], rows: (d.message?.items || []).map(w => { const nf = (w.funder || []).find(f => (f.DOI || '').endsWith(NRF_CR) || /national research foundation of korea/i.test(f.name || ''));
-      return rec('Crossref', { title: w.title?.[0], year: w.issued?.['date-parts']?.[0]?.[0], authors: (w.author || []).map(a => [a.given, a.family].filter(Boolean).join(' ')), venue: w['container-title']?.[0], cites: w['is-referenced-by-count'], doi: w.DOI, url: w.DOI ? `https://doi.org/${w.DOI}` : '', nrf: !!nf, award: (nf?.award || []).join(', '), topics: w.subject }); }) };
+      return rec('Crossref', { title: w.title?.[0], year: w.issued?.['date-parts']?.[0]?.[0], authors: (w.author || []).map(a => [a.given, a.family].filter(Boolean).join(' ')), venue: w['container-title']?.[0], cites: w['is-referenced-by-count'], doi: w.DOI, url: w.DOI ? `https://doi.org/${w.DOI}` : '', nrf: !!nf, award: (nf?.award || []).join(', '), topics: w.subject,
+        type: { 'journal-article': 'article', 'proceedings-article': 'proceedings', 'book-chapter': 'book-chapter', 'posted-content': 'preprint' }[w.type] || w.type }); }) };
   },
   async ncbi(s, o, key) {
-    const k = key ? `&api_key=${enc(key)}` : '';
-    const ids = (await (await dsGet(s, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&retmax=${Math.min(o.n, 200)}&retstart=${((o.page || 1) - 1) * Math.min(o.n, 200)}&term=${enc(`${o.q} AND ${o.from}:${o.to}[dp]`)}${k}`)).json()).esearchresult;
+    const q = qfOf(o), k = key ? `&api_key=${enc(key)}` : '', T = { article: 'journal article[pt]', review: 'review[pt]', book: 'books and documents[filter]', preprint: 'preprint[pt]' };
+    const term = [q.scope === 'title' ? `(${o.q})[ti]` : o.q, `${o.from}:${o.to}[dp]`, ...(q.type && T[q.type] ? [T[q.type]] : []), ...(q.oa ? ['free full text[sb]'] : []), ...(q.lang ? [{ en: 'english[la]', ko: 'korean[la]' }[q.lang]] : []), ...(q.kr ? ['korea[ad]'] : [])].join(' AND ');
+    const ids = (await (await dsGet(s, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&retmax=${Math.min(o.n, 200)}&retstart=${((o.page || 1) - 1) * Math.min(o.n, 200)}${q.sort === 'new' ? '&sort=pub_date' : ''}&term=${enc(term)}${k}`)).json()).esearchresult;
     if (!ids?.idlist?.length) return { total: +ids?.count || 0, rows: [] };
     const d = (await (await dsGet(s, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&retmode=json&id=${ids.idlist.join(',')}${k}`)).json()).result || {};
-    return { total: +ids.count, rows: ids.idlist.map(id => d[id]).filter(Boolean).map(w => rec('PubMed', { title: w.title, year: (w.pubdate || '').slice(0, 4), authors: (w.authors || []).map(a => a.name), venue: w.fulljournalname || w.source, doi: (w.articleids || []).find(a => a.idtype === 'doi')?.value, url: `https://pubmed.ncbi.nlm.nih.gov/${w.uid}/` })) };
+    return { total: +ids.count, rows: ids.idlist.map(id => d[id]).filter(Boolean).map(w => rec('PubMed', { title: w.title, year: (w.pubdate || '').slice(0, 4), authors: (w.authors || []).map(a => a.name), venue: w.fulljournalname || w.source, doi: (w.articleids || []).find(a => a.idtype === 'doi')?.value, url: `https://pubmed.ncbi.nlm.nih.gov/${w.uid}/`,
+      type: (w.pubtype || []).some(t => /review/i.test(t)) ? 'review' : 'article', oa: q.oa ? true : null, lang: { eng: 'en', kor: 'ko' }[(w.lang || [])[0]] || (w.lang || [])[0] })) };
   },
   async s2(s, o, key) {
-    const d = await (await dsGet(s, `https://api.semanticscholar.org/graph/v1/paper/search?query=${enc(o.q)}&limit=${Math.min(o.n, 100)}&offset=${((o.page || 1) - 1) * Math.min(o.n, 100)}&year=${o.from}-${o.to}&fields=title,year,citationCount,authors,venue,externalIds,fieldsOfStudy,url`, key ? { 'x-api-key': key } : {})).json();
-    return { total: d.total, rows: (d.data || []).map(w => rec('Semantic Scholar', { title: w.title, year: w.year, authors: (w.authors || []).map(a => a.name), venue: w.venue, cites: w.citationCount, doi: w.externalIds?.DOI, url: w.url, topics: w.fieldsOfStudy })) };
+    const q = qfOf(o), T = { article: 'JournalArticle', review: 'Review', book: 'Book,BookSection', proceedings: 'Conference', preprint: '' };
+    const extra = `${q.type && T[q.type] ? `&publicationTypes=${T[q.type]}` : ''}${q.oa ? '&openAccessPdf' : ''}${q.minCite > 0 ? `&minCitationCount=${q.minCite}` : ''}`;
+    const d = await (await dsGet(s, `https://api.semanticscholar.org/graph/v1/paper/search?query=${enc(o.q)}&limit=${Math.min(o.n, 100)}&offset=${((o.page || 1) - 1) * Math.min(o.n, 100)}&year=${o.from}-${o.to}${extra}&fields=title,year,citationCount,authors,venue,externalIds,fieldsOfStudy,url,publicationTypes,isOpenAccess`, key ? { 'x-api-key': key } : {})).json();
+    return { total: d.total, rows: (d.data || []).map(w => rec('Semantic Scholar', { title: w.title, year: w.year, authors: (w.authors || []).map(a => a.name), venue: w.venue, cites: w.citationCount, doi: w.externalIds?.DOI, url: w.url, topics: w.fieldsOfStudy,
+      type: (w.publicationTypes || []).includes('Review') ? 'review' : (w.publicationTypes || []).includes('JournalArticle') ? 'article' : undefined, oa: w.isOpenAccess })) };
   },
   async scopus(s, o, key) {
     if (!key) throw new Error('API 키 필요');
-    const q = `TITLE-ABS-KEY(${o.q}) AND PUBYEAR > ${o.from - 1} AND PUBYEAR < ${o.to + 1}${o.nrf ? ' AND FUND-SPONSOR("National Research Foundation of Korea")' : ''}`;
-    const d = (await (await dsGet(s, `https://api.elsevier.com/content/search/scopus?query=${enc(q)}&count=${Math.min(o.n, 25)}&start=${((o.page || 1) - 1) * Math.min(o.n, 25)}`, { 'X-ELS-APIKey': key, Accept: 'application/json' })).json())['search-results'] || {};
+    const q = qfOf(o), T = { article: 'ar', review: 're', book: 'bk OR DOCTYPE(ch)', proceedings: 'cp' };
+    const qs = [`${q.scope === 'title' ? 'TITLE' : 'TITLE-ABS-KEY'}(${o.q})`, `PUBYEAR > ${o.from - 1}`, `PUBYEAR < ${o.to + 1}`, ...(o.nrf ? ['FUND-SPONSOR("National Research Foundation of Korea")'] : []), ...(q.type && T[q.type] ? [`DOCTYPE(${T[q.type]})`] : []),
+      ...(q.oa ? ['OPENACCESS(1)'] : []), ...(q.lang ? [`LANGUAGE(${{ en: 'english', ko: 'korean' }[q.lang]})`] : []), ...(q.kr ? ['AFFILCOUNTRY("South Korea")'] : [])].join(' AND ');
+    const sort = q.sort === 'new' ? '&sort=-coverDate' : q.sort === 'cite' ? '&sort=-citedby-count' : '';
+    const d = (await (await dsGet(s, `https://api.elsevier.com/content/search/scopus?query=${enc(qs)}${sort}&count=${Math.min(o.n, 25)}&start=${((o.page || 1) - 1) * Math.min(o.n, 25)}`, { 'X-ELS-APIKey': key, Accept: 'application/json' })).json())['search-results'] || {};
     const e = (d.entry || []).filter(x => !x.error);
-    return { total: +d['opensearch:totalResults'] || e.length, rows: e.map(w => rec('Scopus', { title: w['dc:title'], year: (w['prism:coverDate'] || '').slice(0, 4), authors: [w['dc:creator']], venue: w['prism:publicationName'], cites: w['citedby-count'], doi: w['prism:doi'], url: w['prism:doi'] ? `https://doi.org/${w['prism:doi']}` : '', nrf: o.nrf })) };
+    return { total: +d['opensearch:totalResults'] || e.length, rows: e.map(w => rec('Scopus', { title: w['dc:title'], year: (w['prism:coverDate'] || '').slice(0, 4), authors: [w['dc:creator']], venue: w['prism:publicationName'], cites: w['citedby-count'], doi: w['prism:doi'], url: w['prism:doi'] ? `https://doi.org/${w['prism:doi']}` : '', nrf: o.nrf,
+      type: { Article: 'article', Review: 'review', 'Conference Paper': 'proceedings', Book: 'book', 'Book Chapter': 'book-chapter' }[w.subtypeDescription] || w.subtypeDescription, oa: w.openaccessFlag })) };
   },
 };
 
@@ -128,7 +156,7 @@ const dsMerge = () => {
   ds.res = [...seen.values()]; ds.dup = ds.raw.length - ds.res.length;
 };
 const dsFetchPage = async (s, page) => {
-  const ds = state.ds, o = { q: ds.q.trim(), from: ds.from, to: ds.to, n: ds.n, nrf: ds.nrf && s.nrf, page }, key = dsKey(s);
+  const ds = state.ds, o = { q: ds.q.trim(), from: ds.from, to: ds.to, n: ds.n, nrf: ds.nrf && s.nrf, page, qf: ds.qf }, key = dsKey(s);
   const r = DS_RUN[s.id] ? await DS_RUN[s.id](s, o, key) : await runTemplate(s, o, key);
   const prev = ds.st[s.id]?.got || 0;
   ds.st[s.id] = { state: 'ok', n: prev + r.rows.length, got: prev + r.rows.length, total: r.total, page, last: r.rows.length };
@@ -139,7 +167,7 @@ const dsSearch = async () => {
   if (!ds.q.trim()) return toast('검색어를 입력하세요.');
   if (!srcs.length) return toast('검색할 데이터 출처를 하나 이상 고르세요.');
   await dsProxy(true);
-  ds.run = true; ds.st = Object.fromEntries(srcs.map(s => [s.id, { state: 'run' }])); ds.res = []; ds.raw = []; ds.sel = new Set(); ds.fresh = null; render();
+  ds.run = true; ds.st = Object.fromEntries(srcs.map(s => [s.id, { state: 'run' }])); ds.res = []; ds.raw = []; ds.sel = new Set(); ds.fresh = null; ds.rf = RF0(); render();
   await Promise.all(srcs.map(async s => {
     try { await dsFetchPage(s, 1); } catch (e) { ds.st[s.id] = { state: 'err', msg: e.message }; }
     if (state.view === 'dsearch') render();
@@ -154,6 +182,17 @@ const dsMore = async () => {
   await Promise.all(srcs.map(async s => { const t = ds.st[s.id]; try { await dsFetchPage(s, t.page + 1); } catch (e) { ds.st[s.id] = { ...t, state: 'ok', msg: e.message, last: 0 }; } }));
   dsMerge(); ds.run = false; render();
 };
+// 받아온 결과에 결과 필터를 적용한다 (요청 단계에서 못 거른 조건도 여기서 맞춘다)
+const dsView = () => {
+  const ds = state.ds, f = ds.rf, q = ds.qf, low = x => String(x || '').toLowerCase();
+  return ds.res.filter(r => (!f.src || r.srcs.includes(f.src)) && (!f.y0 || (r.year && r.year >= +f.y0)) && (!f.y1 || (r.year && r.year <= +f.y1))
+    && (!(+f.minCite || q.minCite) || (r.cites ?? -1) >= Math.max(+f.minCite || 0, q.minCite || 0)) && (!f.type || r.type === f.type || (f.type === 'book' && r.type === 'book-chapter'))
+    && (!q.type || r.type === q.type || (q.type === 'book' && r.type === 'book-chapter')) && (!q.oa || r.oa === true) && (!f.topic || r.topics.includes(f.topic)) && (!f.author || r.authors.some(a => low(a).includes(low(f.author)))) && (!f.venue || low(r.venue).includes(low(f.venue)))
+    && (!f.nrf || r.nrf) && (!f.award || r.award) && (!f.doi || r.doi) && (!f.oa || r.oa === true) && (!f.fresh || ds.fresh?.has(dsNorm(r))));
+};
+const rfActive = () => Object.entries(state.ds.rf).filter(([k, v]) => v !== RF0()[k]).length;
+const qfActive = () => Object.entries(state.ds.qf).filter(([k, v]) => v !== QF0()[k]).length;
+const TYPE_KO = { article: '학술 논문', review: '리뷰', book: '도서', 'book-chapter': '도서 장', dissertation: '학위논문', preprint: '프리프린트', proceedings: '학술대회' };
 const topN = (arr, n = 8) => { const m = new Map(); for (const x of arr) if (x) m.set(x, (m.get(x) || 0) + 1); return [...m].sort((a, b) => b[1] - a[1]).slice(0, n); };
 const yearChart = res => {
   const ys = res.map(r => r.year).filter(Boolean); if (!ys.length) return '<p class="mute sm mt">연도 정보가 없습니다.</p>';
@@ -170,12 +209,12 @@ const rankList = (rows, empty) => rows.length ? `<ol class="rank">${rows.map(([k
 /* ---------- 화면 ---------- */
 const DSV = {};
 DSV.search = () => {
-  const ds = state.ds, cfg = dsCfg(), srcs = dsSources(), res = ds.res, nrfSrc = res.filter(r => r.srcs.some(s => s === 'OpenAlex' || s === 'Crossref'));
+  const ds = state.ds, cfg = dsCfg(), srcs = dsSources(), all = ds.res, res = dsView(), nrfSrc = res.filter(r => r.srcs.some(s => s === 'OpenAlex' || s === 'Crossref'));
   const cited = res.filter(r => r.cites !== null), stBadge = s => { const t = ds.st[s.id]; if (!t) return ''; return t.state === 'run' ? '<span class="tag">검색 중…</span>' : t.state === 'ok' ? `<span class="tag ok">${t.n}건${t.total ? ` / 전체 ${Number(t.total).toLocaleString()}` : ''}</span>` : `<span class="tag no" title="${esc(t.msg)}">${esc(t.msg)}</span>`; };
   const srvHas = s => state.ds.srv?.keys?.includes(s.id);
   const keyState = s => s.key === '없음' ? '<span class="mute sm">키 불필요</span>' : cfg.keys[s.id] ? '<span class="tag ok">키 입력됨</span>' : srvHas(s) ? (state.ds.srv.auth ? '<span class="tag ok">서버 공용 키</span>' : '<span class="tag">서버 키 있음 · 로그인 필요</span>') : s.key === '필수' ? '<span class="tag no">키 필요</span>' : '<span class="mute sm">키 선택</span>';
   return `
-  ${slide('API <b>설정</b>', `<details class="alt" ${srcs.some(s => s.key === '필수' && !cfg.keys[s.id]) && !Object.keys(cfg.keys).length ? 'open' : ''}><summary>API 키와 요청 주소 입력 · 직접 API 추가</summary>
+  ${slide('API <b>설정</b>', `<details class="alt" id="dscfg" ${(state.ds.cfgOpen ?? (srcs.some(s => s.key === '필수' && !cfg.keys[s.id]) && !Object.keys(cfg.keys).length)) ? 'open' : ''}><summary>API 키와 요청 주소 입력 · 직접 API 추가</summary>
     <div class="tw"><table><thead><tr><th scope="col">출처</th><th scope="col">설명</th><th scope="col">API 키</th><th scope="col">요청 주소</th><th scope="col"></th></tr></thead><tbody>
       ${srcs.map(s => `<tr><td><b>${esc(s.name)}</b><br>${keyState(s)}${s.proxy ? '<br><span class="mute sm">중계 서버 경유</span>' : ''}</td><td class="sm">${esc(s.desc)}${s.doc ? ` <a href="${esc(s.doc)}" target="_blank" rel="noopener noreferrer">문서</a>` : ''}</td>
         <td>${s.key === '없음' ? '<span class="mute sm">—</span>' : `<input class="field dskey" type="password" autocomplete="off" value="${esc(cfg.keys[s.id] || '')}" placeholder="${s.key === '필수' ? '필수' : '선택'}" data-chg="dskey" data-id="${esc(s.id)}" aria-label="${esc(s.name)} API 키">`}</td>
@@ -202,9 +241,40 @@ DSV.search = () => {
     ${savedStrip()}
     <div class="chips mt">${srcs.map(s => `<button class="chip ${ds.on[s.id] ? 'on' : ''}" data-act="dson" data-v="${esc(s.id)}" aria-pressed="${!!ds.on[s.id]}">${esc(s.name)} ${stBadge(s)}</button>`).join('')}</div>
     <label class="sm mt" style="display:inline-flex;gap:8px;align-items:center"><input type="checkbox" data-chg="dsnrf" ${ds.nrf ? 'checked' : ''}> 한국연구재단 지원 논문만 (OpenAlex·Crossref·Scopus에 적용)</label>
+    <details class="alt" id="dsqf" ${ds.qfOpen ? 'open' : ''}><summary>상세 검색 조건 ${qfActive() ? `<span class="tag ok">${qfActive()}개 적용</span>` : ''}</summary>
+      <div class="qfgrid">
+        <label>검색 범위<select class="field" data-chg="dsqf" data-k="scope">${[['all', '제목·초록 등 전체'], ['title', '제목만']].map(([v, l]) => `<option value="${v}" ${ds.qf.scope === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>문헌 유형<select class="field" data-chg="dsqf" data-k="type">${QF_TYPES.map(([v, l]) => `<option value="${v}" ${ds.qf.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>분야<select class="field" data-chg="dsqf" data-k="field">${QF_FIELDS.map(([v, l]) => `<option value="${v}" ${ds.qf.field === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>언어<select class="field" data-chg="dsqf" data-k="lang">${[['', '전체 언어'], ['en', '영어'], ['ko', '한국어']].map(([v, l]) => `<option value="${v}" ${ds.qf.lang === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>정렬<select class="field" data-chg="dsqf" data-k="sort">${[['rel', '관련도순'], ['new', '최신순'], ['cite', '피인용순']].map(([v, l]) => `<option value="${v}" ${ds.qf.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>최소 피인용<input class="field" type="number" min="0" value="${ds.qf.minCite || ''}" placeholder="0" data-chg="dsqf" data-k="minCite"></label>
+        <label class="chk"><input type="checkbox" data-chg="dsqf" data-k="oa" ${ds.qf.oa ? 'checked' : ''}> 오픈 액세스만</label>
+        <label class="chk"><input type="checkbox" data-chg="dsqf" data-k="kr" ${ds.qf.kr ? 'checked' : ''}> 한국 기관 참여 논문만</label>
+      </div>
+      <div class="tw"><table class="qfsup"><thead><tr><th scope="col">조건</th>${Object.keys(QF_SUPPORT).map(id => `<th scope="col">${esc(DS_SRC.find(x => x.id === id).name)}</th>`).join('')}</tr></thead><tbody>
+        ${Object.entries(QF_LABEL).map(([k, l]) => `<tr><td><b>${l}</b></td>${Object.keys(QF_SUPPORT).map(id => `<td>${QF_SUPPORT[id].includes(k) ? '<span class="tag ok">검색 단계</span>' : ['minCite', 'type', 'oa'].includes(k) ? '<span class="mute sm">결과 필터</span>' : '<span class="mute sm">—</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      <p class="mute sm">'검색 단계'는 출처에 조건을 보내 결과를 받고, '결과 필터'는 받아온 뒤 이 화면에서 거릅니다. 국내 API(NTIS·KCI·RISS·KRM)와 직접 추가한 API에는 검색어·연도·건수만 전달됩니다. 문헌 유형 분류는 출처마다 조금씩 다릅니다.</p>
+      <div class="chips mt"><button class="btn" data-act="dsqfreset">조건 초기화</button></div>
+    </details>
+  </section>
+  ${all.length ? `
+  <section class="slide">
+    <div class="toolbar" style="margin-bottom:4px"><h2 style="flex:1 1 200px">결과 <b>필터</b> <span class="mute sm">${res.length} / ${all.length}건${rfActive() ? ` · ${rfActive()}개 적용` : ''}</span></h2><button class="btn" data-act="dsrfreset" ${rfActive() ? '' : 'disabled'}>필터 초기화</button></div>
+    <div class="qfgrid rf">
+      <label>출처<select class="field" data-chg="dsrf" data-k="src"><option value="">전체 출처</option>${[...new Set(all.flatMap(r => r.srcs))].map(v => `<option ${ds.rf.src === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+      <label>연도<span class="yr2"><input class="field" type="number" value="${ds.rf.y0}" placeholder="${ds.from}" data-chg="dsrf" data-k="y0" aria-label="연도 시작"> ~ <input class="field" type="number" value="${ds.rf.y1}" placeholder="${ds.to}" data-chg="dsrf" data-k="y1" aria-label="연도 끝"></span></label>
+      <label>최소 피인용<input class="field" type="number" min="0" value="${ds.rf.minCite}" placeholder="0" data-chg="dsrf" data-k="minCite"></label>
+      <label>문헌 유형<select class="field" data-chg="dsrf" data-k="type"><option value="">전체 유형</option>${[...new Set(all.map(r => r.type).filter(Boolean))].map(v => `<option value="${esc(v)}" ${ds.rf.type === v ? 'selected' : ''}>${esc(TYPE_KO[v] || v)}</option>`).join('')}</select></label>
+      <label>분야<select class="field" data-chg="dsrf" data-k="topic"><option value="">전체 분야</option>${topN(all.flatMap(r => r.topics), 40).map(([v, n]) => `<option value="${esc(v)}" ${ds.rf.topic === v ? 'selected' : ''}>${esc(v)} (${n})</option>`).join('')}</select></label>
+      <label>저자 포함<input class="field" value="${esc(ds.rf.author)}" placeholder="이름 일부" data-chg="dsrf" data-k="author"></label>
+      <label>학술지·기관 포함<input class="field" value="${esc(ds.rf.venue)}" placeholder="예: Nature" data-chg="dsrf" data-k="venue"></label>
+      <div class="chks">${[['nrf', '재단 지원만'], ['award', '과제번호 있음'], ['doi', 'DOI 있음'], ['oa', '오픈 액세스만'], ...(ds.fresh ? [['fresh', '새 결과만']] : [])].map(([k, l]) => `<label class="chk"><input type="checkbox" data-chg="dsrf" data-k="${k}" ${ds.rf[k] ? 'checked' : ''}> ${l}</label>`).join('')}</div>
+    </div>
+    <p class="mute sm">받아온 결과 안에서 바로 거릅니다. 아래 분석·차트·표·CSV·후보 추가가 모두 필터 결과를 따릅니다.</p>
   </section>
   ${res.length ? `
-  <div class="row c4">${[[res.length, '건', `검색 결과 · 중복 ${ds.dup}건 합침`], [new Set(res.flatMap(r => r.srcs)).size, '곳', '결과를 준 출처'], [cited.length ? Math.round(cited.reduce((a, r) => a + r.cites, 0) / cited.length) : '—', '회', '평균 피인용'], [nrfSrc.length ? Math.round(nrfSrc.filter(r => r.nrf).length / nrfSrc.length * 100) : '—', '%', '한국연구재단 지원 비율 (OpenAlex·Crossref 기준)']].map(([n, u, l], i) => `<div class="tile"><div class="blob ${G[i]} ${i % 2 ? 'b2' : ''}">${['결과', '출처', '인용', '재단'][i]}</div><div class="n">${n}<small> ${u}</small></div><div class="l">${l}</div></div>`).join('')}</div>
+  <div class="row c4">${[[res.length, '건', `검색 결과${rfActive() ? ` (필터 전 ${all.length}건)` : ''} · 중복 ${ds.dup}건 합침`], [new Set(res.flatMap(r => r.srcs)).size, '곳', '결과를 준 출처'], [cited.length ? Math.round(cited.reduce((a, r) => a + r.cites, 0) / cited.length) : '—', '회', '평균 피인용'], [nrfSrc.length ? Math.round(nrfSrc.filter(r => r.nrf).length / nrfSrc.length * 100) : '—', '%', '한국연구재단 지원 비율 (OpenAlex·Crossref 기준)']].map(([n, u, l], i) => `<div class="tile"><div class="blob ${G[i]} ${i % 2 ? 'b2' : ''}">${['결과', '출처', '인용', '재단'][i]}</div><div class="n">${n}<small> ${u}</small></div><div class="l">${l}</div></div>`).join('')}</div>
   ${slide('연도별 <b>분포</b>', yearChart(res))}
   <div class="row c3">
     ${slide('많이 나온 <b>저자</b>', rankList(topN(res.flatMap(r => r.authors)), '저자 정보가 없습니다.'))}
@@ -215,16 +285,16 @@ DSV.search = () => {
   ${slide('피인용 <b>상위 10</b>', cited.length ? tbl(['제목', '연도', '학술지', '피인용', '재단 과제번호'], [...cited].sort((a, b) => b.cites - a.cites).slice(0, 10).map(r => [r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.title)}</a>` : esc(r.title), r.year || '—', esc(r.venue || '—'), `<b>${r.cites.toLocaleString()}</b>`, esc(r.award || (r.nrf ? '지원 표시' : '—'))])) : '<p class="mute sm mt">피인용 정보가 있는 결과가 없습니다.</p>')}
   <section class="slide">
     <div class="toolbar" style="margin-bottom:6px"><h2 style="flex:1 1 200px">검색 <b>결과</b> <span class="mute sm">${res.length}건 · 선택 ${ds.sel.size}건${ds.fresh ? ` · 새 결과 ${ds.fresh.size}건` : ''}</span></h2>
-      <button class="btn" data-act="dsall">${ds.sel.size === Math.min(res.length, 200) ? '선택 해제' : '앞 200건 모두 선택'}</button><button class="btn" data-act="dsmore" ${ds.run ? 'disabled' : ''}>더 가져오기 (출처별 +${ds.n}건)</button><button class="btn" data-act="dscsv">CSV 내려받기</button>
+      <button class="btn" data-act="dsall">${ds.sel.size && ds.sel.size === Math.min(res.length, 200) ? '선택 해제' : '앞 200건 모두 선택'}</button><button class="btn" data-act="dsmore" ${ds.run ? 'disabled' : ''}>더 가져오기 (출처별 +${ds.n}건)</button><button class="btn" data-act="dscsv">CSV 내려받기</button>
       <select class="field" data-chg="dsdom" aria-label="후보로 추가할 지원 영역" style="flex:0 1 150px">${DOMAINS.map(d => `<option value="${d.id}" ${ds.dom === d.id ? 'selected' : ''}>${d.short}</option>`).join('')}</select>
       <button class="btn pri" data-act="dsimport" ${ds.sel.size ? '' : 'disabled'}>선택 항목을 성과 후보로 추가</button></div>
     <p class="mute sm">성과 후보로 추가하면 역방향(현재 성과에서 출발) 트랙 후보로 데이터 관리에 들어갑니다. 첫 지원 연도는 출판 연도로 임시로 채우므로 지원 이력을 확인해 고쳐 주세요.</p>
     <div class="tw"><table class="dsres"><thead><tr><th scope="col"><span class="sr">선택</span></th><th scope="col">출처</th><th scope="col">제목</th><th scope="col">연도</th><th scope="col">저자</th><th scope="col">학술지·기관</th><th scope="col">피인용</th><th scope="col">재단</th></tr></thead><tbody>
-      ${res.slice(0, 200).map((r, i) => `<tr><td><input type="checkbox" data-chg="dssel" data-v="${i}" ${ds.sel.has(i) ? 'checked' : ''} aria-label="${i + 1}번 선택"></td><td class="sm">${r.srcs.map(esc).join('<br>')}${ds.fresh?.has(dsNorm(r)) ? '<br><span class="tag ok">새 결과</span>' : ''}</td>
+      ${res.slice(0, 200).map((r, i) => `<tr><td><input type="checkbox" data-chg="dssel" data-v="${esc(dsNorm(r))}" ${ds.sel.has(dsNorm(r)) ? 'checked' : ''} aria-label="${i + 1}번 선택"></td><td class="sm">${r.srcs.map(esc).join('<br>')}${ds.fresh?.has(dsNorm(r)) ? '<br><span class="tag ok">새 결과</span>' : ''}</td>
         <td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.title)}</a>` : esc(r.title)}${r.doi ? `<br><span class="mute sm">${esc(r.doi)}</span>` : ''}</td><td>${r.year || '—'}</td><td class="sm">${esc(r.authors.slice(0, 3).join(', '))}${r.authors.length > 3 ? ' 외' : ''}</td>
         <td class="sm">${esc(r.venue || '—')}</td><td>${r.cites ?? '—'}</td><td class="sm">${r.nrf ? `<span class="tag ok">지원</span>${r.award ? r.award.split(', ').map(a => `<br><button class="linkbtn" data-act="trpick" data-v="${esc(a)}" title="과제 역추적">${esc(a)}</button>`).join('') : ''}` : '—'}</td></tr>`).join('')}
     </tbody></table></div>${res.length > 200 ? '<p class="mute sm mt">앞 200건만 표시합니다. CSV에는 전체가 담깁니다.</p>' : ''}
-  </section>` : ds.run ? '' : slide('검색 <b>안내</b>', `<ul class="bul"><li>여러 출처를 한 번에 검색해 같은 논문(DOI 또는 제목·연도가 같은 것)은 하나로 합칩니다.</li><li>"한국연구재단 지원 논문만" 을 켜면 OpenAlex·Crossref의 연구비 정보로 재단 지원 논문만 남기고, 과제번호가 있으면 함께 보여줍니다.</li><li>결과는 연도별 분포, 저자·학술지·분야 순위, 피인용 상위로 분석하고, 골라서 성과 후보로 보낼 수 있습니다.</li></ul>`)}`;
+  </section>` : slide('조건에 맞는 <b>결과 없음</b>', '<p class="mute sm mt">결과 필터를 풀거나 바꿔 보세요.</p>')}` : ds.run ? '' : slide('검색 <b>안내</b>', `<ul class="bul"><li>여러 출처를 한 번에 검색해 같은 논문(DOI 또는 제목·연도가 같은 것)은 하나로 합칩니다.</li><li>"한국연구재단 지원 논문만" 을 켜면 OpenAlex·Crossref의 연구비 정보로 재단 지원 논문만 남기고, 과제번호가 있으면 함께 보여줍니다.</li><li>결과는 연도별 분포, 저자·학술지·분야 순위, 피인용 상위로 분석하고, 골라서 성과 후보로 보낼 수 있습니다.</li></ul>`)}`;
 };
 
 /* ---------- 동작 ---------- */
@@ -238,6 +308,10 @@ Object.assign(ACT, {
   dsdom: v => { state.ds.dom = v; },
   dson: v => { state.ds.on[v] = !state.ds.on[v]; render(); },
   dsmore: () => dsMore(),
+  dsqf: (v, t) => { const k = t.dataset.k; state.ds.qf[k] = t.type === 'checkbox' ? t.checked : k === 'minCite' ? Math.max(0, +v || 0) : v; render(); },
+  dsqfreset: () => { state.ds.qf = QF0(); render(); },
+  dsrf: (v, t) => { const k = t.dataset.k; state.ds.rf[k] = t.type === 'checkbox' ? t.checked : String(v).slice(0, 80); state.ds.sel = new Set(); render(); },
+  dsrfreset: () => { state.ds.rf = RF0(); render(); },
   dsgo: () => { state.ds.q = $('#dsq')?.value.slice(0, 200) || state.ds.q; dsSearch(); },
   dskey: (v, t) => { const c = dsCfg(); if (v.trim()) c.keys[t.dataset.id] = v.trim(); else delete c.keys[t.dataset.id]; dsSave(c); render(); },
   dstpl: (v, t) => { const c = dsCfg(), s = dsSources().find(x => x.id === t.dataset.id); if (!/^https?:\/\//i.test(v.trim())) return toast('요청 주소는 http:// 또는 https:// 로 시작해야 합니다.');
@@ -256,15 +330,15 @@ Object.assign(ACT, {
     catch (e) { ds.st[v] = { state: 'err', msg: e.message }; }
     render();
   },
-  dssel: (v, t) => { t.checked ? state.ds.sel.add(+v) : state.ds.sel.delete(+v); render(); },
-  dsall: () => { const ds = state.ds, n = Math.min(ds.res.length, 200); ds.sel = ds.sel.size === n ? new Set() : new Set([...Array(n).keys()]); render(); },
+  dssel: (v, t) => { t.checked ? state.ds.sel.add(v) : state.ds.sel.delete(v); render(); },
+  dsall: () => { const ds = state.ds, keys = dsView().slice(0, 200).map(dsNorm); ds.sel = ds.sel.size && ds.sel.size === keys.length ? new Set() : new Set(keys); render(); },
   dscsv: () => {
-    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`, rows = [['출처', '제목', '연도', '저자', '학술지·기관', '피인용', 'DOI', '주소', '재단 지원', '재단 과제번호', '분야']];
-    for (const r of state.ds.res) rows.push([r.srcs.join(' / '), r.title, r.year || '', r.authors.join('; '), r.venue, r.cites ?? '', r.doi, r.url, r.nrf ? 'Y' : '', r.award, r.topics.join('; ')]);
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`, rows = [['출처', '제목', '연도', '유형', '저자', '학술지·기관', '피인용', 'DOI', '주소', '오픈 액세스', '재단 지원', '재단 과제번호', '분야']];
+    for (const r of dsView()) rows.push([r.srcs.join(' / '), r.title, r.year || '', TYPE_KO[r.type] || r.type, r.authors.join('; '), r.venue, r.cites ?? '', r.doi, r.url, r.oa === true ? 'Y' : r.oa === false ? 'N' : '', r.nrf ? 'Y' : '', r.award, r.topics.join('; ')]);
     download(`데이터검색_${state.ds.q.replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30)}.csv`, new Blob(['﻿' + rows.map(r => r.map(q).join(',')).join('\r\n')], { type: 'text/csv' }));
   },
   dsimport: () => {
-    const ds = state.ds, picked = [...ds.sel].map(i => ds.res[i]).filter(Boolean), skip = picked.filter(r => !r.year || r.year < 1977).length;
+    const ds = state.ds, picked = ds.res.filter(r => ds.sel.has(dsNorm(r))), skip = picked.filter(r => !r.year || r.year < 1977).length;
     const rows = picked.filter(r => r.year && r.year >= 1977).map(r => ({ title: impClean(r.title), domain: ds.dom, guide: 'G1', ctype: CTYPES[1], grade: 1, y0: Math.min(2026, r.year), y1: null, y2: null, y3: null, y4: null,
       s0: null, s1: null, s2: null, s3: null, invest: null, links: [], region: '수도권', p0: impClean(r.award ? `재단 과제 ${r.award}` : `${r.srcs[0]} 검색`), p1: '', track: 'reverse' }));
     if (!rows.length) return toast('1977년 이후 연도가 있는 항목이 없습니다.');
@@ -277,3 +351,5 @@ dsProxy();
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'dsq') { e.preventDefault(); ACT.dsgo(); } });
 
 R.dsearch = () => `<div class="chips subtabs">${DS_SUBS.map(([v, l]) => `<button class="chip ${state.dsub === v ? 'on' : ''}" data-act="nav" data-v="dsearch:${v}">${l}</button>`).join('')}</div>${DSV[state.dsub]()}`;
+// API 설정을 펼치고 접은 상태를 기억한다 (toggle은 버블링되지 않아 캡처 단계에서 받는다)
+document.addEventListener('toggle', e => { if (e.target.id === 'dscfg') state.ds.cfgOpen = e.target.open; if (e.target.id === 'dsqf') state.ds.qfOpen = e.target.open; }, true);

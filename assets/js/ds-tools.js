@@ -28,25 +28,100 @@ const barsChart = (years, a, b, line, labels) => {
 const span = (lo, hi) => { const a = []; for (let y = lo; y <= hi; y++) a.push(y); return a; };
 const cagr = (a, b, n) => a > 0 && b > 0 && n > 0 ? `${((Math.pow(b / a, 1 / n) - 1) * 100).toFixed(1)}%` : '—';
 
-/* ---------- 6. 공저 네트워크 (검색 결과) ---------- */
-const coauthorNet = res => {
-  const freq = new Map(); for (const r of res) for (const a of r.authors) freq.set(a, (freq.get(a) || 0) + 1);
-  const top = [...freq].sort((a, b) => b[1] - a[1]).slice(0, 30).map(x => x[0]), idx = new Map(top.map((a, i) => [a, i])), E = new Map();
-  for (const r of res) { const as = r.authors.filter(a => idx.has(a)); for (let i = 0; i < as.length; i++) for (let j = i + 1; j < as.length; j++) { const k = [idx.get(as[i]), idx.get(as[j])].sort((x, y) => x - y).join('-'); E.set(k, (E.get(k) || 0) + 1); } }
-  if (top.length < 3 || !E.size) return '<p class="mute sm mt">공저 관계를 그릴 만큼 저자 정보가 겹치지 않습니다.</p>';
-  // 간단한 힘 배치: 고정 횟수만 돌려 정지 그림으로 만든다
-  const W = 760, H = 420, P = top.map((a, i) => ({ x: W / 2 + Math.cos(i * 2.4) * 160, y: H / 2 + Math.sin(i * 2.4) * 140, vx: 0, vy: 0 })), edges = [...E].map(([k, w]) => { const [a, b] = k.split('-').map(Number); return { a, b, w }; });
-  for (let it = 0; it < 260; it++) {
-    for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) { const dx = P[i].x - P[j].x, dy = P[i].y - P[j].y, d2 = dx * dx + dy * dy + .1, f = 1400 / d2; P[i].vx += dx * f; P[i].vy += dy * f; P[j].vx -= dx * f; P[j].vy -= dy * f; }
-    for (const e of edges) { const p = P[e.a], q = P[e.b], dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1, f = (d - 70) / d * .04; p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f; }
-    for (const p of P) { p.vx += (W / 2 - p.x) * .006; p.vy += (H / 2 - p.y) * .006; p.vx *= .8; p.vy *= .8; p.x = Math.max(40, Math.min(W - 40, p.x + p.vx)); p.y = Math.max(24, Math.min(H - 24, p.y + p.vy)); }
-  }
-  const mx = Math.max(...top.map(a => freq.get(a))), wm = Math.max(...edges.map(e => e.w));
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="상위 저자 ${top.length}명의 공저 관계" style="background:#1B2238;border-radius:18px">
-    ${edges.map(e => `<line x1="${P[e.a].x.toFixed(1)}" y1="${P[e.a].y.toFixed(1)}" x2="${P[e.b].x.toFixed(1)}" y2="${P[e.b].y.toFixed(1)}" stroke="#3D9FE6" stroke-opacity="${(.25 + e.w / wm * .6).toFixed(2)}" stroke-width="${(1 + e.w / wm * 3).toFixed(1)}"><title>${esc(top[e.a])} – ${esc(top[e.b])} · 공저 ${e.w}편</title></line>`).join('')}
-    ${top.map((a, i) => { const r = 5 + freq.get(a) / mx * 9; return `<circle cx="${P[i].x.toFixed(1)}" cy="${P[i].y.toFixed(1)}" r="${r.toFixed(1)}" fill="${GC[i % 4]}" stroke="#fff" stroke-width="1.5"><title>${esc(a)} · ${freq.get(a)}편</title></circle><text x="${P[i].x.toFixed(1)}" y="${(P[i].y + r + 11).toFixed(1)}" text-anchor="middle" style="fill:#E6EBF5;font-size:10px">${esc(a.length > 16 ? a.slice(0, 15) + '…' : a)}</text>`; }).join('')}</svg>
-    <p class="mute sm mt">검색 결과에 많이 나온 저자 ${top.length}명입니다. 원 크기는 논문 수, 선 굵기는 함께 쓴 논문 수입니다.</p>`;
+/* ---------- 6. 공저 네트워크 (검색 결과) · 옵시디언 그래프 스타일 ----------
+   힘 기반 배치를 계속 돌리고, 마우스를 올리면 이웃만 밝히고 연결을 따라 입자가 흐른다. 끌기·확대·노드 끌기·클릭 선택을 지원한다 */
+const CO_PAL = ['#7C8CF8', '#EC5C8D', '#F6A53A', '#27B894', '#3D9FE6', '#B07CF0', '#E8C547', '#5ED6B8'];
+const co = { data: null, pos: {}, gen: 0 };
+const coBuild = res => {
+  const freq = new Map(), papers = new Map();
+  for (const r of res) for (const a of r.authors) { freq.set(a, (freq.get(a) || 0) + 1); (papers.get(a) || papers.set(a, []).get(a)).push(r); }
+  const top = [...freq].sort((a, b) => b[1] - a[1]).slice(0, 70).map(x => x[0]), idx = new Map(top.map((a, i) => [a, i])), E = new Map();
+  for (const r of res) { const as = [...new Set(r.authors.filter(a => idx.has(a)))]; for (let i = 0; i < as.length; i++) for (let j = i + 1; j < as.length; j++) { const k = [idx.get(as[i]), idx.get(as[j])].sort((x, y) => x - y).join('-'); E.set(k, (E.get(k) || 0) + 1); } }
+  const edges = [...E].map(([k, w]) => { const [a, b] = k.split('-').map(Number); return { a, b, w, ph: Math.random() }; });
+  const nb = top.map(() => new Set()); edges.forEach(e => { nb[e.a].add(e.b); nb[e.b].add(e.a); });
+  // 연구 집단 색: 이웃이 가장 많이 가진 집단 번호를 따라가는 단순한 전파로 묶는다
+  let lab = top.map((_, i) => i);
+  for (let it = 0; it < 12; it++) lab = lab.map((l, i) => { if (!nb[i].size) return l; const c = new Map(); nb[i].forEach(j => c.set(lab[j], (c.get(lab[j]) || 0) + 1)); return [...c].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0]; });
+  const groups = [...new Set(lab)].map(g => [g, lab.filter(x => x === g).length]).sort((a, b) => b[1] - a[1]).map(x => x[0]);
+  const mx = Math.max(1, ...top.map(a => freq.get(a)));
+  const nodes = top.map((a, i) => { const p = co.pos[a]; return { name: a, n: freq.get(a), deg: nb[i].size, nb: nb[i], papers: papers.get(a), x: p ? p[0] : Math.cos(i * 2.4) * (8 + i * 2), y: p ? p[1] : Math.sin(i * 2.4) * (8 + i * 2), fresh: !p, vx: 0, vy: 0, r: 4 + Math.sqrt(freq.get(a) / mx) * 10, col: CO_PAL[groups.indexOf(lab[i]) % CO_PAL.length], ph: i * 1.7 }; });
+  return { nodes, edges, groups: groups.length };
 };
+const coauthorNet = res => {
+  co.data = coBuild(res);
+  const { nodes, edges } = co.data;
+  if (nodes.length < 3 || !edges.length) { co.data = null; return '<p class="mute sm mt">공저 관계를 그릴 만큼 저자 정보가 겹치지 않습니다.</p>'; }
+  return `<div class="graph-wrap"><canvas id="cograph" style="height:520px" tabindex="0" aria-label="검색 결과 상위 저자 ${nodes.length}명의 공저 관계 그래프"></canvas>
+      <div class="graph-hint" style="bottom:10px">끌기: 이동 · 휠: 확대 · 노드 끌기: 재배치 · 클릭: 선택 · 더블클릭: 이 저자로 결과 거르기</div></div>
+    <div id="copanel" class="mt"></div>
+    <p class="mute sm mt">검색 결과에 많이 나온 저자 ${nodes.length}명과 공저 ${edges.length}쌍입니다. 원 크기는 논문 수, 선 굵기는 함께 쓴 논문 수, 색은 함께 자주 쓰는 연구 집단(${co.data.groups}개)입니다.</p>`;
+};
+const coPanel = () => {
+  const el = $('#copanel'); if (!el || !co.data) return;
+  const n = co.data.nodes[co.sel];
+  el.innerHTML = n ? `<div class="story"><b>${esc(n.name)}</b> <span class="mute">· 논문 ${n.n}편 · 공저자 ${n.deg}명</span>
+      <div class="chips mt" style="gap:6px">${[...n.nb].sort((a, b) => co.data.nodes[b].n - co.data.nodes[a].n).slice(0, 12).map(j => `<button class="chip" data-act="cosel" data-v="${j}" style="font-size:11.5px;padding:4px 10px">${esc(co.data.nodes[j].name)}</button>`).join('')}</div>
+      <ol class="rank" style="margin-top:10px">${n.papers.slice(0, 4).map((p, i) => `<li style="cursor:default"><b>${i + 1}</b><span>${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">${esc(p.title)}</a>` : esc(p.title)} <span class="mute">· ${p.year || '—'} · 피인용 ${p.cites ?? '—'}</span></span><b></b></li>`).join('')}</ol>
+      <div class="chips mt"><button class="btn" data-act="coauthor" data-v="${co.sel}">이 저자로 결과 거르기</button><button class="btn" data-act="cosel" data-v="">선택 해제</button></div></div>` : '<p class="mute sm">노드를 누르면 공저자와 논문이 보입니다.</p>';
+};
+const coMount = () => {
+  const cv = $('#cograph'); if (!cv || !co.data) return;
+  const D = co.data, N = D.nodes, E = D.edges, ctx = cv.getContext('2d'), RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const gen = co.gen = (co.gen || 0) + 1;
+  co.cv = cv; co.tf = co.tf || { x: 0, y: 0, k: 1 }; co.alpha = 1; co.hover = null; co.auto = true; if (co.sel >= N.length) co.sel = null;
+  const size = () => { const d = window.devicePixelRatio || 1; cv.width = cv.clientWidth * d; cv.height = cv.clientHeight * d; co.dpr = d; };
+  size(); new ResizeObserver(size).observe(cv);
+  const tick = () => {
+    const a = co.alpha;
+    for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) { const p = N[i], q = N[j]; let dx = p.x - q.x, dy = p.y - q.y, d2 = dx * dx + dy * dy + .5; if (d2 > 80000) continue; const f = Math.min(4, 420 * a / d2); p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f; }
+    for (const e of E) { const p = N[e.a], q = N[e.b], dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1, f = (d - 56) / d * .05 * a; p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f; }
+    for (const n of N) { n.vx -= n.x * .03 * a; n.vy -= n.y * .04 * a; n.vx *= .82; n.vy *= .82; if (!n.fixed) { n.x += n.vx; n.y += n.vy; } co.pos[n.name] = [n.x, n.y]; }
+    co.alpha *= .99;
+  };
+  const fit = () => { const xs = N.map(n => n.x), ys = N.map(n => n.y), w = cv.clientWidth, h = cv.clientHeight, k = Math.max(.4, Math.min(2, (w - 80) / (Math.max(...xs) - Math.min(...xs) || 1), (h - 80) / (Math.max(...ys) - Math.min(...ys) || 1))); return { k, x: -(Math.max(...xs) + Math.min(...xs)) / 2 * k, y: -(Math.max(...ys) + Math.min(...ys)) / 2 * k }; };
+  const hlSet = () => { const id = co.hover ?? co.sel; if (id === null || id === undefined) return null; const s = new Set([id]); N[id].nb.forEach(j => s.add(j)); return { id, s }; };
+  const draw = now => {
+    const w = cv.clientWidth, h = cv.clientHeight, { x: tx, y: ty, k } = co.tf, ox = w / 2 + tx, oy = h / 2 + ty, t = now / 1000, hl = hlSet(), rs = Math.max(.7, Math.min(1.6, k));
+    ctx.setTransform(co.dpr, 0, 0, co.dpr, 0, 0); ctx.globalAlpha = 1; ctx.fillStyle = '#1B2238'; ctx.fillRect(0, 0, w, h);
+    const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * .6); g.addColorStop(0, 'rgba(124,140,248,.12)'); g.addColorStop(1, 'rgba(124,140,248,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    for (const n of N) { n.sx = (n.x + (RM ? 0 : Math.sin(t * .7 + n.ph) * 1.3)) * k + ox; n.sy = (n.y + (RM ? 0 : Math.cos(t * .6 + n.ph) * 1.3)) * k + oy; }
+    const wm = Math.max(...E.map(e => e.w));
+    for (const e of E) { const on = !hl || e.a === hl.id || e.b === hl.id, p = N[e.a], q = N[e.b];
+      ctx.globalAlpha = on ? (hl ? .9 : .22 + e.w / wm * .3) : .04; ctx.strokeStyle = hl && on ? p.col : '#9AA6C7'; ctx.lineWidth = (hl && on ? 1.6 : 1) * (1 + e.w / wm * 1.5);
+      ctx.beginPath(); ctx.moveTo(p.sx, p.sy); ctx.lineTo(q.sx, q.sy); ctx.stroke();
+      if (!RM && (!hl || on)) { const u = (t * (hl ? .45 : .12) + e.ph) % 1; ctx.globalAlpha = (hl ? 1 : .5) * Math.sin(u * Math.PI); ctx.fillStyle = hl ? '#fff' : '#C9D2E3'; ctx.beginPath(); ctx.arc(p.sx + (q.sx - p.sx) * u, p.sy + (q.sy - p.sy) * u, hl ? 2.3 : 1.4, 0, 7); ctx.fill(); } }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.font = '11px Pretendard, "Malgun Gothic", sans-serif';
+    for (let i = 0; i < N.length; i++) { const n = N[i], on = !hl || hl.s.has(i), r = n.r * rs;
+      if (on && (n.deg >= 6 || i === co.sel)) { ctx.globalAlpha = .14 + .06 * Math.sin(t * 2 + n.ph); ctx.fillStyle = n.col; ctx.beginPath(); ctx.arc(n.sx, n.sy, r * 2.2 + 3, 0, 7); ctx.fill(); }
+      ctx.globalAlpha = on ? 1 : .12; ctx.fillStyle = n.col; ctx.beginPath(); ctx.arc(n.sx, n.sy, r, 0, 7); ctx.fill();
+      if (i === co.sel || i === co.hover) { ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.arc(n.sx, n.sy, r + 3.5, 0, 7); ctx.stroke(); if (i === co.sel && !RM) { const u = (t * .8) % 1; ctx.globalAlpha = (1 - u) * .8; ctx.beginPath(); ctx.arc(n.sx, n.sy, r + 4 + u * 20, 0, 7); ctx.stroke(); } }
+      const la = hl ? (on ? 1 : 0) : Math.max(n.deg >= 5 || n.n >= 3 ? .85 : 0, Math.min(1, (k - 1.05) / .5));
+      if (la > .02) { ctx.globalAlpha = la; ctx.fillStyle = '#E6EBF5'; const s = n.name.length > 18 ? n.name.slice(0, 17) + '…' : n.name; ctx.fillText(s, n.sx, n.sy + r + 13); } }
+    ctx.globalAlpha = 1;
+  };
+  const loop = now => { if (gen !== co.gen || !cv.isConnected) return; if (co.alpha > .003) tick(); if (co.auto) { const f = fit(); co.tf.x += (f.x - co.tf.x) * .1; co.tf.y += (f.y - co.tf.y) * .1; co.tf.k += (f.k - co.tf.k) * .1; } draw(now); requestAnimationFrame(loop); };
+  const at = e => { const b = cv.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top; let best = null, bd = 1e9; N.forEach((n, i) => { const d = Math.hypot(n.sx - mx, n.sy - my); if (d < n.r * 1.6 + 6 && d < bd) { best = i; bd = d; } }); return best; };
+  let drag = null;
+  cv.onpointerdown = e => { const i = at(e); drag = { i, x: e.clientX, y: e.clientY, m: 0 }; if (i !== null) N[i].fixed = true; cv.setPointerCapture(e.pointerId); };
+  cv.onpointermove = e => {
+    if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.m += Math.abs(dx) + Math.abs(dy); drag.x = e.clientX; drag.y = e.clientY; if (drag.m > 4) co.auto = false;
+      if (drag.i !== null) { N[drag.i].x += dx / co.tf.k; N[drag.i].y += dy / co.tf.k; co.alpha = Math.max(co.alpha, .3); } else { co.tf.x += dx; co.tf.y += dy; } return; }
+    const i = at(e); if (i !== co.hover) { co.hover = i; cv.style.cursor = i !== null ? 'pointer' : 'grab'; }
+  };
+  cv.onpointerup = () => { if (!drag) return; if (drag.i !== null) N[drag.i].fixed = false; if (drag.m < 5) { co.sel = drag.i; coPanel(); } drag = null; };
+  cv.onpointerleave = () => { if (!drag) co.hover = null; };
+  cv.ondblclick = e => { const i = at(e); if (i !== null) ACT.coauthor(String(i)); };
+  cv.onwheel = e => { e.preventDefault(); co.auto = false; const b = cv.getBoundingClientRect(), mx = e.clientX - b.left - b.width / 2, my = e.clientY - b.top - b.height / 2, k0 = co.tf.k, k = Math.max(.3, Math.min(4, k0 * (e.deltaY < 0 ? 1.12 : .89))); co.tf.x = mx - (mx - co.tf.x) * k / k0; co.tf.y = my - (my - co.tf.y) * k / k0; co.tf.k = k; };
+  cv.onkeydown = e => { const order = N.map((n, i) => i).sort((a, b) => N[b].deg - N[a].deg), p = order.indexOf(co.sel ?? -1);
+    if (/Arrow(Right|Down)/.test(e.key)) { e.preventDefault(); co.sel = order[(p + 1) % order.length]; coPanel(); } else if (/Arrow(Left|Up)/.test(e.key)) { e.preventDefault(); co.sel = order[(p - 1 + order.length) % order.length]; coPanel(); } else if (e.key === 'Enter' && co.sel !== null) ACT.coauthor(String(co.sel)); };
+  if (RM || N.some(n => n.fresh)) { for (let i = 0; i < 320; i++) tick(); co.alpha = RM ? 0 : .12; co.tf = fit(); }
+  coPanel(); draw(performance.now());
+  requestAnimationFrame(loop);
+};
+Object.assign(ACT, {
+  cosel: v => { co.sel = v === '' ? null : +v; coPanel(); },
+  coauthor: v => { const n = co.data?.nodes[+v]; if (!n) return; state.ds.rf.author = n.name; state.ds.sel = new Set(); render(); toast(`${n.name} 저자의 결과만 보여줍니다. 결과 필터에서 풀 수 있습니다.`); },
+});
 
 /* ---------- 7. 저장한 검색 ---------- */
 const dsSaved = () => LS.get('nrf50.dssaved', []);
@@ -222,13 +297,13 @@ Object.assign(ACT, {
   dssave: () => {
     const ds = state.ds; if (!ds.q.trim()) return toast('검색어를 먼저 입력하세요.');
     const name = (prompt('저장할 이름', ds.q) || '').trim().slice(0, 30); if (!name) return;
-    const L = dsSaved(); L.push({ id: `s${Date.now().toString(36)}`, name, q: ds.q, from: ds.from, to: ds.to, n: ds.n, nrf: ds.nrf, on: { ...ds.on }, seen: ds.res.map(dsNorm).slice(0, 2000), at: new Date().toLocaleDateString('ko-KR') });
+    const L = dsSaved(); L.push({ id: `s${Date.now().toString(36)}`, name, qf: { ...ds.qf }, q: ds.q, from: ds.from, to: ds.to, n: ds.n, nrf: ds.nrf, on: { ...ds.on }, seen: ds.res.map(dsNorm).slice(0, 2000), at: new Date().toLocaleDateString('ko-KR') });
     LS.set('nrf50.dssaved', L); render(); toast('검색 조건을 저장했습니다. 다시 실행하면 새로 나온 결과를 표시합니다.');
   },
   dsunsave: v => { LS.set('nrf50.dssaved', dsSaved().filter(x => x.id !== v)); render(); },
   dsrerun: async v => {
     const L = dsSaved(), x = L.find(y => y.id === v); if (!x) return;
-    Object.assign(state.ds, { q: x.q, from: x.from, to: x.to, n: x.n, nrf: x.nrf, on: { ...x.on } }); state.dsub = 'search'; syncHash(false);
+    Object.assign(state.ds, { q: x.q, from: x.from, to: x.to, n: x.n, nrf: x.nrf, on: { ...x.on }, qf: { ...QF0(), ...(x.qf || {}) } }); state.dsub = 'search'; syncHash(false);
     await dsSearch(); const seen = new Set(x.seen || []); state.ds.fresh = new Set(state.ds.res.map(dsNorm).filter(k => !seen.has(k)));
     x.seen = [...new Set([...(x.seen || []), ...state.ds.res.map(dsNorm)])].slice(-3000); x.at = new Date().toLocaleDateString('ko-KR'); LS.set('nrf50.dssaved', L);
     render(); toast(`새 결과 ${state.ds.fresh.size}건`);
