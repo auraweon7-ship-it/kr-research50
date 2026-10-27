@@ -368,6 +368,9 @@ details.alt{margin-top:14px}details.alt summary{cursor:pointer;font-weight:700;f
 code{font-family:ui-monospace,Consolas,monospace;font-size:.92em;padding:1px 5px;border-radius:6px;background:#DFE3EA}
 table.dsres td{vertical-align:top}table.dsres td:nth-child(3){min-width:260px}table.dsres a{color:var(--ink);font-weight:600}
 .chip .tag{margin-left:4px;font-size:10px;padding:1px 7px}
+.savedchip{display:inline-flex;gap:2px;padding:0 4px 0 0;align-items:center}.savedchip button{padding:7px 4px 7px 12px;font-size:12px;font-weight:600;color:var(--ink)}.savedchip button+button{padding:4px 8px;color:var(--mute)}
+.linkbtn{color:#1F6FB5;text-decoration:underline;font-size:11.5px;padding:0;text-align:left}
+.evlook{margin-top:14px}.evlook .rank li{grid-template-columns:26px 1fr auto}.evlook .rank li span{white-space:normal}.evlook .btn{padding:6px 12px;font-size:12px}
 .site-foot{margin-top:44px;padding:20px 24px;border-radius:22px;box-shadow:var(--in);text-align:center;font-size:13px;font-weight:600}
 .site-foot .dots{justify-content:center;margin:0 0 8px}
 .site-foot span{color:#A9B2C3;margin:0 8px;font-weight:400}

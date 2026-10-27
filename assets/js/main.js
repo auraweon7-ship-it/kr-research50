@@ -1,5 +1,5 @@
 /* 화면 조립, 주소(딥링크), 공개용·연구용 전환, 이벤트 연결. 가장 마지막에 불러온다 */
-const SUBMAP = { outreach: [SUBS, 'sub'], admin: [ADMIN_SUBS, 'asub'] };
+const SUBMAP = { outreach: [SUBS, 'sub'], admin: [ADMIN_SUBS, 'asub'], dsearch: [DS_SUBS, 'dsub'] };
 const visibleViews = () => VIEWS.filter(v => (staff() || !v.staff) && (isAdmin() || !v.admin));
 
 /* ---------- 주소 ↔ 상태 ----------
@@ -101,7 +101,7 @@ Object.assign(ACT, {
     state.mode = v; LS.set('nrf50.mode', v); state.open = null; syncHash(false); render(); toast(v === 'staff' ? '연구용 화면입니다. 발굴 기준·점수·관리 도구가 보입니다.' : '공개용 화면입니다. 최종선정된 성과·연구자만 보입니다.');
   },
   adminbtn: () => {
-    if (isAdmin()) { state.admin = false; try { sessionStorage.removeItem('nrf50.admin'); } catch (e) { /* 저장 불가 환경 */ } if (state.view === 'admin') state.view = 'goal'; syncHash(false); render(); return toast('관리자 모드에서 나왔습니다.'); }
+    if (isAdmin()) { state.admin = false; try { sessionStorage.removeItem('nrf50.admin'); } catch (e) { /* 저장 불가 환경 */ } fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {}); if (state.ds?.srv) state.ds.srv.auth = false; if (state.view === 'admin') state.view = 'goal'; syncHash(false); render(); return toast('관리자 모드에서 나왔습니다.'); }
     const d = $('#login'); d.hidden = false; $('#loginmsg').textContent = ''; const i = $('#loginpw'); i.value = ''; i.focus();
   },
   adminclose: () => { $('#login').hidden = true; $('.adminbtn')?.focus(); },
@@ -111,6 +111,9 @@ Object.assign(ACT, {
     const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('nrf50:' + pw)))].map(b => b.toString(16).padStart(2, '0')).join('');
     if (h !== CONFIG.ADMIN_HASH) { msg.textContent = '암호가 맞지 않습니다.'; $('#loginpw').select(); return; }
     state.admin = true; try { sessionStorage.setItem('nrf50.admin', '1'); } catch (e) { /* 저장 불가 환경 */ }
+    // 서버가 있으면 서버 세션도 맺는다(서버 공용 API 키 사용). 정적 호스팅이면 조용히 넘어간다
+    try { await fetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ password: pw }) }); } catch (e) { /* 서버 없음 */ }
+    if (typeof dsProxy === 'function') await dsProxy(true);
     state.mode = 'staff'; LS.set('nrf50.mode', 'staff'); $('#login').hidden = true; render(); toast('관리자 모드입니다. 연구 관리와 데이터 검색 메뉴가 열렸습니다.');
   },
   lang: () => { state.lang = state.lang === 'ko' ? 'en' : 'ko'; LS.set('nrf50.lang', state.lang); render(); },

@@ -20,15 +20,25 @@ const DS_SRC = [
 const dsCfg = () => LS.get('nrf50.dsapi', { keys: {}, tpl: {}, custom: [], mailto: '' });
 const dsSave = c => LS.set('nrf50.dsapi', c);
 const dsSources = () => [...DS_SRC, ...dsCfg().custom.map(c => ({ ...c, custom: true, key: c.url.includes('{key}') ? '필수' : '없음', proxy: c.proxy, desc: `직접 추가한 API · ${c.type.toUpperCase()}` }))];
-state.ds = { q: '', from: 1977, to: 2026, n: 25, nrf: false, on: Object.fromEntries(DS_SRC.map(s => [s.id, !!s.on])), st: {}, res: [], dup: 0, sel: new Set(), dom: 'rd', proxy: null, run: false };
+state.dsub = 'search';
+state.ds = { raw: [], fresh: null, srv: { keys: [], auth: false }, q: '', from: 1977, to: 2026, n: 25, nrf: false, on: Object.fromEntries(DS_SRC.map(s => [s.id, !!s.on])), st: {}, res: [], dup: 0, sel: new Set(), dom: 'rd', proxy: null, run: false };
 
 /* ---------- 요청 ---------- */
-const dsProxy = async () => { if (state.ds.proxy !== null) return state.ds.proxy; try { const r = await fetch('/proxy/health', { cache: 'no-store' }); state.ds.proxy = r.ok && (await r.json()).ok === true; } catch (e) { state.ds.proxy = false; } return state.ds.proxy; };
+// 중계 서버 상태: 서버에 공용 키가 있는 출처(keys)와 이 브라우저의 관리자 로그인 여부(auth)도 함께 받는다
+const SRVKEY = '__SERVER_KEY__';
+const dsProxy = async (force) => {
+  if (state.ds.proxy !== null && !force) return state.ds.proxy;
+  try { const r = await fetch('/proxy/health', { cache: 'no-store', credentials: 'same-origin' }), d = r.ok ? await r.json() : {}; state.ds.proxy = d.ok === true; state.ds.srv = { keys: d.keys || [], auth: !!d.auth }; }
+  catch (e) { state.ds.proxy = false; state.ds.srv = { keys: [], auth: false }; }
+  return state.ds.proxy;
+};
+// 내 키가 있으면 내 키, 없으면 (관리자 로그인 상태에서) 서버 공용 키 표시를 넘긴다. 실제 키는 서버가 끼워 넣는다
+const dsKey = s => dsCfg().keys[s.id] || (state.ds.srv?.auth && state.ds.srv.keys.includes(s.id) ? SRVKEY : '');
 const dsGet = async (src, url, headers = {}) => {
-  const viaProxy = src.proxy || (src.auto && await dsProxy());
+  const srv = url.includes(SRVKEY) || Object.values(headers).includes(SRVKEY), viaProxy = srv || src.proxy || (src.auto && await dsProxy());
   if (viaProxy && !(await dsProxy())) throw new Error('중계 서버 필요 · node server.js 로 실행한 주소에서만 됩니다');
   let r;
-  try { r = await fetch(viaProxy ? `/proxy?url=${encodeURIComponent(url)}` : url, { headers }); }
+  try { r = await fetch(viaProxy ? `/proxy?url=${encodeURIComponent(url)}${srv ? `&src=${enc(src.id)}` : ''}` : url, { headers, credentials: 'same-origin' }); }
   catch (e) { throw new Error('연결 차단(CORS·네트워크) · 중계 서버를 거쳐야 할 수 있습니다'); }
   if (r.status === 401 || r.status === 403) throw new Error(`인증 실패(${r.status}) · API 키를 확인하세요`);
   if (r.status === 429) throw new Error('요청 한도 초과 · 잠시 후 다시 하거나 API 키를 넣으세요');
@@ -37,37 +47,37 @@ const dsGet = async (src, url, headers = {}) => {
 };
 const enc = encodeURIComponent;
 const httpUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
-const rec = (src, o) => ({ src, title: String(o.title || '').trim() || '(제목 없음)', year: +o.year || null, authors: (o.authors || []).filter(Boolean).slice(0, 6), venue: o.venue || '', cites: Number.isFinite(+o.cites) && o.cites !== '' && o.cites !== null ? +o.cites : null, doi: (o.doi || '').replace(/^https?:\/\/doi\.org\//i, ''), url: httpUrl(o.url), nrf: !!o.nrf, award: o.award || '', topics: (o.topics || []).filter(Boolean) });
+const rec = (src, o) => ({ src, title: String(o.title || '').trim() || '(제목 없음)', year: +o.year || null, authors: (o.authors || []).filter(Boolean).slice(0, 6), venue: o.venue || '', cites: Number.isFinite(+o.cites) && o.cites !== '' && o.cites !== null ? +o.cites : null, doi: (o.doi || '').replace(/^https?:\/\/doi\.org\//i, ''), url: httpUrl(o.url), nrf: !!o.nrf, award: String(o.award || '').replace(/\u([0-9a-f]{4})/gi, (m, h) => String.fromCharCode(parseInt(h, 16))), topics: (o.topics || []).filter(Boolean) });
 
 const DS_RUN = {
   async openalex(s, o, key) {
     const f = [`publication_year:${o.from}-${o.to}`, ...(o.nrf ? [`funders.id:${NRF_OA}`] : [])].join(',');
     const sel = 'id,title,publication_year,cited_by_count,doi,authorships,primary_location,primary_topic,funders,awards';
-    const d = await (await dsGet(s, `https://api.openalex.org/works?search=${enc(o.q)}&filter=${f}&per-page=${Math.min(o.n, 200)}&select=${sel}${key ? `&api_key=${enc(key)}` : ''}${dsCfg().mailto ? `&mailto=${enc(dsCfg().mailto)}` : ''}`)).json();
+    const d = await (await dsGet(s, `https://api.openalex.org/works?search=${enc(o.q)}&filter=${f}&per-page=${Math.min(o.n, 200)}&page=${o.page || 1}&select=${sel}${key ? `&api_key=${enc(key)}` : ''}${dsCfg().mailto ? `&mailto=${enc(dsCfg().mailto)}` : ''}`)).json();
     return { total: d.meta?.count, rows: (d.results || []).map(w => rec('OpenAlex', { title: w.title, year: w.publication_year, authors: (w.authorships || []).map(a => a.author?.display_name), venue: w.primary_location?.source?.display_name, cites: w.cited_by_count, doi: w.doi, url: w.doi || w.id,
       nrf: (w.funders || []).some(f => f.id?.endsWith(NRF_OA)), award: (w.awards || []).filter(a => a.funder_id?.endsWith(NRF_OA) && a.funder_award_id).map(a => a.funder_award_id).join(', '), topics: [w.primary_topic?.field?.display_name, w.primary_topic?.display_name] })) };
   },
   async crossref(s, o) {
     const f = [`from-pub-date:${o.from}`, `until-pub-date:${o.to}`, ...(o.nrf ? [`funder:${NRF_CR}`] : [])].join(',');
-    const d = await (await dsGet(s, `https://api.crossref.org/works?query=${enc(o.q)}&rows=${Math.min(o.n, 100)}&filter=${f}&select=DOI,title,issued,author,container-title,is-referenced-by-count,funder,subject${dsCfg().mailto ? `&mailto=${enc(dsCfg().mailto)}` : ''}`)).json();
+    const d = await (await dsGet(s, `https://api.crossref.org/works?query=${enc(o.q)}&rows=${Math.min(o.n, 100)}&offset=${((o.page || 1) - 1) * Math.min(o.n, 100)}&filter=${f}&select=DOI,title,issued,author,container-title,is-referenced-by-count,funder,subject${dsCfg().mailto ? `&mailto=${enc(dsCfg().mailto)}` : ''}`)).json();
     return { total: d.message?.['total-results'], rows: (d.message?.items || []).map(w => { const nf = (w.funder || []).find(f => (f.DOI || '').endsWith(NRF_CR) || /national research foundation of korea/i.test(f.name || ''));
       return rec('Crossref', { title: w.title?.[0], year: w.issued?.['date-parts']?.[0]?.[0], authors: (w.author || []).map(a => [a.given, a.family].filter(Boolean).join(' ')), venue: w['container-title']?.[0], cites: w['is-referenced-by-count'], doi: w.DOI, url: w.DOI ? `https://doi.org/${w.DOI}` : '', nrf: !!nf, award: (nf?.award || []).join(', '), topics: w.subject }); }) };
   },
   async ncbi(s, o, key) {
     const k = key ? `&api_key=${enc(key)}` : '';
-    const ids = (await (await dsGet(s, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&retmax=${Math.min(o.n, 200)}&term=${enc(`${o.q} AND ${o.from}:${o.to}[dp]`)}${k}`)).json()).esearchresult;
+    const ids = (await (await dsGet(s, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&retmax=${Math.min(o.n, 200)}&retstart=${((o.page || 1) - 1) * Math.min(o.n, 200)}&term=${enc(`${o.q} AND ${o.from}:${o.to}[dp]`)}${k}`)).json()).esearchresult;
     if (!ids?.idlist?.length) return { total: +ids?.count || 0, rows: [] };
     const d = (await (await dsGet(s, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&retmode=json&id=${ids.idlist.join(',')}${k}`)).json()).result || {};
     return { total: +ids.count, rows: ids.idlist.map(id => d[id]).filter(Boolean).map(w => rec('PubMed', { title: w.title, year: (w.pubdate || '').slice(0, 4), authors: (w.authors || []).map(a => a.name), venue: w.fulljournalname || w.source, doi: (w.articleids || []).find(a => a.idtype === 'doi')?.value, url: `https://pubmed.ncbi.nlm.nih.gov/${w.uid}/` })) };
   },
   async s2(s, o, key) {
-    const d = await (await dsGet(s, `https://api.semanticscholar.org/graph/v1/paper/search?query=${enc(o.q)}&limit=${Math.min(o.n, 100)}&year=${o.from}-${o.to}&fields=title,year,citationCount,authors,venue,externalIds,fieldsOfStudy,url`, key ? { 'x-api-key': key } : {})).json();
+    const d = await (await dsGet(s, `https://api.semanticscholar.org/graph/v1/paper/search?query=${enc(o.q)}&limit=${Math.min(o.n, 100)}&offset=${((o.page || 1) - 1) * Math.min(o.n, 100)}&year=${o.from}-${o.to}&fields=title,year,citationCount,authors,venue,externalIds,fieldsOfStudy,url`, key ? { 'x-api-key': key } : {})).json();
     return { total: d.total, rows: (d.data || []).map(w => rec('Semantic Scholar', { title: w.title, year: w.year, authors: (w.authors || []).map(a => a.name), venue: w.venue, cites: w.citationCount, doi: w.externalIds?.DOI, url: w.url, topics: w.fieldsOfStudy })) };
   },
   async scopus(s, o, key) {
     if (!key) throw new Error('API 키 필요');
     const q = `TITLE-ABS-KEY(${o.q}) AND PUBYEAR > ${o.from - 1} AND PUBYEAR < ${o.to + 1}${o.nrf ? ' AND FUND-SPONSOR("National Research Foundation of Korea")' : ''}`;
-    const d = (await (await dsGet(s, `https://api.elsevier.com/content/search/scopus?query=${enc(q)}&count=${Math.min(o.n, 25)}`, { 'X-ELS-APIKey': key, Accept: 'application/json' })).json())['search-results'] || {};
+    const d = (await (await dsGet(s, `https://api.elsevier.com/content/search/scopus?query=${enc(q)}&count=${Math.min(o.n, 25)}&start=${((o.page || 1) - 1) * Math.min(o.n, 25)}`, { 'X-ELS-APIKey': key, Accept: 'application/json' })).json())['search-results'] || {};
     const e = (d.entry || []).filter(x => !x.error);
     return { total: +d['opensearch:totalResults'] || e.length, rows: e.map(w => rec('Scopus', { title: w['dc:title'], year: (w['prism:coverDate'] || '').slice(0, 4), authors: [w['dc:creator']], venue: w['prism:publicationName'], cites: w['citedby-count'], doi: w['prism:doi'], url: w['prism:doi'] ? `https://doi.org/${w['prism:doi']}` : '', nrf: o.nrf })) };
   },
@@ -95,7 +105,7 @@ const runTemplate = async (s, o, key) => {
   const t = (dsCfg().tpl[s.id] || s.tpl || s.url || '');
   if (/\(.*확인.*\)/.test(t)) throw new Error('요청 주소 입력 필요 · API 설정에서 넣어 주세요');
   if (t.includes('{key}') && !key) throw new Error('API 키 필요');
-  const url = t.replace(/\{q\}/g, enc(o.q)).replace(/\{key\}/g, enc(key || '')).replace(/\{n\}/g, o.n).replace(/\{from\}/g, o.from).replace(/\{to\}/g, o.to);
+  const url = t.replace(/\{q\}/g, enc(o.q)).replace(/\{key\}/g, enc(key || '')).replace(/\{n\}/g, o.n).replace(/\{from\}/g, o.from).replace(/\{to\}/g, o.to).replace(/\{page\}/g, o.page || 1).replace(/\{start\}/g, ((o.page || 1) - 1) * o.n + 1);
   const text = await (await dsGet(s, url)).text();
   if (s.type === 'json' || /^\s*[{[]/.test(text)) {
     const d = JSON.parse(text), list = jsonPath(d, s.path) || [], fm = s.fields || {};
@@ -111,24 +121,38 @@ const runTemplate = async (s, o, key) => {
 
 /* ---------- 검색과 분석 ---------- */
 const dsNorm = r => (r.doi ? `doi:${r.doi.toLowerCase()}` : `${r.title.toLowerCase().replace(/[^0-9a-z가-힣]/g, '')}:${r.year || ''}`);
+// 여러 출처에서 같은 논문이 오면 하나로 합친다 (DOI, 없으면 제목+연도)
+const dsMerge = () => {
+  const ds = state.ds, seen = new Map();
+  for (const r of ds.raw) { const k = dsNorm(r), p = seen.get(k); if (!p) seen.set(k, { ...r, srcs: [r.src] }); else { if (!p.srcs.includes(r.src)) p.srcs.push(r.src); p.nrf ||= r.nrf; p.award ||= r.award; if (p.cites === null || (r.cites ?? -1) > p.cites) p.cites = r.cites; if (!p.topics.length) p.topics = r.topics; } }
+  ds.res = [...seen.values()]; ds.dup = ds.raw.length - ds.res.length;
+};
+const dsFetchPage = async (s, page) => {
+  const ds = state.ds, o = { q: ds.q.trim(), from: ds.from, to: ds.to, n: ds.n, nrf: ds.nrf && s.nrf, page }, key = dsKey(s);
+  const r = DS_RUN[s.id] ? await DS_RUN[s.id](s, o, key) : await runTemplate(s, o, key);
+  const prev = ds.st[s.id]?.got || 0;
+  ds.st[s.id] = { state: 'ok', n: prev + r.rows.length, got: prev + r.rows.length, total: r.total, page, last: r.rows.length };
+  ds.raw.push(...r.rows);
+};
 const dsSearch = async () => {
-  const ds = state.ds, cfg = dsCfg(), srcs = dsSources().filter(s => ds.on[s.id]);
+  const ds = state.ds, srcs = dsSources().filter(s => ds.on[s.id]);
   if (!ds.q.trim()) return toast('검색어를 입력하세요.');
   if (!srcs.length) return toast('검색할 데이터 출처를 하나 이상 고르세요.');
-  ds.run = true; ds.st = Object.fromEntries(srcs.map(s => [s.id, { state: 'run' }])); ds.res = []; ds.sel = new Set(); render();
-  const all = [];
+  await dsProxy(true);
+  ds.run = true; ds.st = Object.fromEntries(srcs.map(s => [s.id, { state: 'run' }])); ds.res = []; ds.raw = []; ds.sel = new Set(); ds.fresh = null; render();
   await Promise.all(srcs.map(async s => {
-    try {
-      const o = { q: ds.q.trim(), from: ds.from, to: ds.to, n: ds.n, nrf: ds.nrf && s.nrf }, key = cfg.keys[s.id] || '';
-      const r = DS_RUN[s.id] ? await DS_RUN[s.id](s, o, key) : await runTemplate(s, o, key);
-      ds.st[s.id] = { state: 'ok', n: r.rows.length, total: r.total }; all.push(...r.rows);
-    } catch (e) { ds.st[s.id] = { state: 'err', msg: e.message }; }
+    try { await dsFetchPage(s, 1); } catch (e) { ds.st[s.id] = { state: 'err', msg: e.message }; }
     if (state.view === 'dsearch') render();
   }));
-  // 여러 출처에서 같은 논문이 오면 하나로 합친다 (DOI, 없으면 제목+연도)
-  const seen = new Map();
-  for (const r of all) { const k = dsNorm(r), p = seen.get(k); if (!p) seen.set(k, { ...r, srcs: [r.src] }); else { p.srcs.push(r.src); p.nrf ||= r.nrf; p.award ||= r.award; if (p.cites === null || (r.cites ?? -1) > p.cites) p.cites = r.cites; if (!p.topics.length) p.topics = r.topics; } }
-  ds.res = [...seen.values()]; ds.dup = all.length - ds.res.length; ds.run = false; render();
+  dsMerge(); ds.run = false; render();
+};
+// 다음 쪽을 이어 받는다. 이미 끝까지 받은 출처는 건너뛴다
+const dsMore = async () => {
+  const ds = state.ds, srcs = dsSources().filter(s => ds.st[s.id]?.state === 'ok' && ds.st[s.id].last >= Math.min(ds.n, s.id === 'scopus' ? 25 : 100) && (!ds.st[s.id].total || ds.st[s.id].got < ds.st[s.id].total));
+  if (!srcs.length) return toast('더 받을 결과가 없습니다.');
+  ds.run = true; render();
+  await Promise.all(srcs.map(async s => { const t = ds.st[s.id]; try { await dsFetchPage(s, t.page + 1); } catch (e) { ds.st[s.id] = { ...t, state: 'ok', msg: e.message, last: 0 }; } }));
+  dsMerge(); ds.run = false; render();
 };
 const topN = (arr, n = 8) => { const m = new Map(); for (const x of arr) if (x) m.set(x, (m.get(x) || 0) + 1); return [...m].sort((a, b) => b[1] - a[1]).slice(0, n); };
 const yearChart = res => {
@@ -144,10 +168,12 @@ const yearChart = res => {
 const rankList = (rows, empty) => rows.length ? `<ol class="rank">${rows.map(([k, v], i) => `<li style="cursor:default"><b>${i + 1}</b><span>${esc(k)}</span><b>${v}</b></li>`).join('')}</ol>` : `<p class="mute sm mt">${empty}</p>`;
 
 /* ---------- 화면 ---------- */
-R.dsearch = () => {
+const DSV = {};
+DSV.search = () => {
   const ds = state.ds, cfg = dsCfg(), srcs = dsSources(), res = ds.res, nrfSrc = res.filter(r => r.srcs.some(s => s === 'OpenAlex' || s === 'Crossref'));
   const cited = res.filter(r => r.cites !== null), stBadge = s => { const t = ds.st[s.id]; if (!t) return ''; return t.state === 'run' ? '<span class="tag">검색 중…</span>' : t.state === 'ok' ? `<span class="tag ok">${t.n}건${t.total ? ` / 전체 ${Number(t.total).toLocaleString()}` : ''}</span>` : `<span class="tag no" title="${esc(t.msg)}">${esc(t.msg)}</span>`; };
-  const keyState = s => s.key === '없음' ? '<span class="mute sm">키 불필요</span>' : cfg.keys[s.id] ? '<span class="tag ok">키 입력됨</span>' : s.key === '필수' ? '<span class="tag no">키 필요</span>' : '<span class="mute sm">키 선택</span>';
+  const srvHas = s => state.ds.srv?.keys?.includes(s.id);
+  const keyState = s => s.key === '없음' ? '<span class="mute sm">키 불필요</span>' : cfg.keys[s.id] ? '<span class="tag ok">키 입력됨</span>' : srvHas(s) ? (state.ds.srv.auth ? '<span class="tag ok">서버 공용 키</span>' : '<span class="tag">서버 키 있음 · 로그인 필요</span>') : s.key === '필수' ? '<span class="tag no">키 필요</span>' : '<span class="mute sm">키 선택</span>';
   return `
   ${slide('API <b>설정</b>', `<details class="alt" ${srcs.some(s => s.key === '필수' && !cfg.keys[s.id]) && !Object.keys(cfg.keys).length ? 'open' : ''}><summary>API 키와 요청 주소 입력 · 직접 API 추가</summary>
     <div class="tw"><table><thead><tr><th scope="col">출처</th><th scope="col">설명</th><th scope="col">API 키</th><th scope="col">요청 주소</th><th scope="col"></th></tr></thead><tbody>
@@ -164,7 +190,8 @@ R.dsearch = () => {
       <select class="field" data-f="type" aria-label="응답 형식" style="flex:0 1 100px"><option value="json">JSON</option><option value="xml">XML</option></select><input class="field" data-f="path" placeholder="목록 위치 (예: results, 비우면 자동)" aria-label="목록 위치" style="flex:1 1 180px">
       <label class="sm"><input type="checkbox" data-f="proxy"> 중계 서버 경유</label><button class="btn pri" data-act="dsadd">추가</button></div>
     <p class="mute sm">JSON은 목록 안 항목의 title·year·authors·venue·cites 필드를 읽습니다. XML은 반복되는 항목을 자동으로 찾습니다. 중계 서버는 허용한 호스트만 통과시키므로 새 호스트는 서버의 PROXY_HOSTS 환경변수에 추가해야 합니다.</p></details>
-    <p class="sm mt">중계 서버: ${ds.proxy === null ? '<span class="mute">확인 전</span>' : ds.proxy ? '<span class="tag ok">사용 가능</span> 국내 API를 검색할 수 있습니다' : '<span class="tag no">없음</span> 국내 API(NTIS·KCI·RISS·KRM)는 <code>npm start</code>(server.js)로 실행한 주소에서만 검색됩니다'}</p>`,
+    <p class="sm mt">서버 공용 키: ${state.ds.srv?.keys?.length ? `${state.ds.srv.keys.map(esc).join(', ')} · ${state.ds.srv.auth ? '<span class="tag ok">사용 중</span> 내 키를 넣지 않은 출처는 서버 키를 씁니다' : '<span class="tag">관리자 로그인 필요</span>'}` : '<span class="mute">없음 (서버 환경변수 KEY_NTIS 등으로 설정)</span>'}</p>
+    <p class="sm">중계 서버: ${ds.proxy === null ? '<span class="mute">확인 전</span>' : ds.proxy ? '<span class="tag ok">사용 가능</span> 국내 API를 검색할 수 있습니다' : '<span class="tag no">없음</span> 국내 API(NTIS·KCI·RISS·KRM)는 <code>npm start</code>(server.js)로 실행한 주소에서만 검색됩니다'}</p>`,
     '학술·R&D 데이터베이스에 연결합니다. 키가 필요 없는 OpenAlex·Crossref·NCBI는 바로 쓸 수 있습니다.')}
   <section class="slide">
     <h2>통합 <b>검색</b></h2>${dots}
@@ -172,6 +199,7 @@ R.dsearch = () => {
       <label class="sm">연도 <input class="field" type="number" min="1900" max="2030" value="${ds.from}" data-chg="dsfrom" aria-label="시작 연도" style="width:90px"> ~ <input class="field" type="number" min="1900" max="2030" value="${ds.to}" data-chg="dsto" aria-label="끝 연도" style="width:90px"></label>
       <select class="field" data-chg="dsn" aria-label="출처별 건수" style="flex:0 1 120px">${[10, 25, 50, 100].map(v => `<option value="${v}" ${ds.n === v ? 'selected' : ''}>출처별 ${v}건</option>`).join('')}</select>
       <button class="btn pri" data-act="dsgo" ${ds.run ? 'disabled' : ''}>${ds.run ? '검색 중…' : '검색'}</button></div>
+    ${savedStrip()}
     <div class="chips mt">${srcs.map(s => `<button class="chip ${ds.on[s.id] ? 'on' : ''}" data-act="dson" data-v="${esc(s.id)}" aria-pressed="${!!ds.on[s.id]}">${esc(s.name)} ${stBadge(s)}</button>`).join('')}</div>
     <label class="sm mt" style="display:inline-flex;gap:8px;align-items:center"><input type="checkbox" data-chg="dsnrf" ${ds.nrf ? 'checked' : ''}> 한국연구재단 지원 논문만 (OpenAlex·Crossref·Scopus에 적용)</label>
   </section>
@@ -183,17 +211,18 @@ R.dsearch = () => {
     ${slide('많이 나온 <b>학술지·기관</b>', rankList(topN(res.map(r => r.venue)), '학술지 정보가 없습니다.'))}
     ${slide('많이 나온 <b>분야</b>', rankList(topN(res.flatMap(r => r.topics)), '분야 정보는 OpenAlex·Crossref·Semantic Scholar 결과에만 있습니다.'))}
   </div>
+  ${slide('공저 <b>네트워크</b>', coauthorNet(res))}
   ${slide('피인용 <b>상위 10</b>', cited.length ? tbl(['제목', '연도', '학술지', '피인용', '재단 과제번호'], [...cited].sort((a, b) => b.cites - a.cites).slice(0, 10).map(r => [r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.title)}</a>` : esc(r.title), r.year || '—', esc(r.venue || '—'), `<b>${r.cites.toLocaleString()}</b>`, esc(r.award || (r.nrf ? '지원 표시' : '—'))])) : '<p class="mute sm mt">피인용 정보가 있는 결과가 없습니다.</p>')}
   <section class="slide">
-    <div class="toolbar" style="margin-bottom:6px"><h2 style="flex:1 1 200px">검색 <b>결과</b> <span class="mute sm">${res.length}건 · 선택 ${ds.sel.size}건</span></h2>
-      <button class="btn" data-act="dsall">${ds.sel.size === Math.min(res.length, 200) ? '선택 해제' : '앞 200건 모두 선택'}</button><button class="btn" data-act="dscsv">CSV 내려받기</button>
+    <div class="toolbar" style="margin-bottom:6px"><h2 style="flex:1 1 200px">검색 <b>결과</b> <span class="mute sm">${res.length}건 · 선택 ${ds.sel.size}건${ds.fresh ? ` · 새 결과 ${ds.fresh.size}건` : ''}</span></h2>
+      <button class="btn" data-act="dsall">${ds.sel.size === Math.min(res.length, 200) ? '선택 해제' : '앞 200건 모두 선택'}</button><button class="btn" data-act="dsmore" ${ds.run ? 'disabled' : ''}>더 가져오기 (출처별 +${ds.n}건)</button><button class="btn" data-act="dscsv">CSV 내려받기</button>
       <select class="field" data-chg="dsdom" aria-label="후보로 추가할 지원 영역" style="flex:0 1 150px">${DOMAINS.map(d => `<option value="${d.id}" ${ds.dom === d.id ? 'selected' : ''}>${d.short}</option>`).join('')}</select>
       <button class="btn pri" data-act="dsimport" ${ds.sel.size ? '' : 'disabled'}>선택 항목을 성과 후보로 추가</button></div>
     <p class="mute sm">성과 후보로 추가하면 역방향(현재 성과에서 출발) 트랙 후보로 데이터 관리에 들어갑니다. 첫 지원 연도는 출판 연도로 임시로 채우므로 지원 이력을 확인해 고쳐 주세요.</p>
     <div class="tw"><table class="dsres"><thead><tr><th scope="col"><span class="sr">선택</span></th><th scope="col">출처</th><th scope="col">제목</th><th scope="col">연도</th><th scope="col">저자</th><th scope="col">학술지·기관</th><th scope="col">피인용</th><th scope="col">재단</th></tr></thead><tbody>
-      ${res.slice(0, 200).map((r, i) => `<tr><td><input type="checkbox" data-chg="dssel" data-v="${i}" ${ds.sel.has(i) ? 'checked' : ''} aria-label="${i + 1}번 선택"></td><td class="sm">${r.srcs.map(esc).join('<br>')}</td>
+      ${res.slice(0, 200).map((r, i) => `<tr><td><input type="checkbox" data-chg="dssel" data-v="${i}" ${ds.sel.has(i) ? 'checked' : ''} aria-label="${i + 1}번 선택"></td><td class="sm">${r.srcs.map(esc).join('<br>')}${ds.fresh?.has(dsNorm(r)) ? '<br><span class="tag ok">새 결과</span>' : ''}</td>
         <td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.title)}</a>` : esc(r.title)}${r.doi ? `<br><span class="mute sm">${esc(r.doi)}</span>` : ''}</td><td>${r.year || '—'}</td><td class="sm">${esc(r.authors.slice(0, 3).join(', '))}${r.authors.length > 3 ? ' 외' : ''}</td>
-        <td class="sm">${esc(r.venue || '—')}</td><td>${r.cites ?? '—'}</td><td class="sm">${r.nrf ? `<span class="tag ok">지원</span>${r.award ? `<br>${esc(r.award)}` : ''}` : '—'}</td></tr>`).join('')}
+        <td class="sm">${esc(r.venue || '—')}</td><td>${r.cites ?? '—'}</td><td class="sm">${r.nrf ? `<span class="tag ok">지원</span>${r.award ? r.award.split(', ').map(a => `<br><button class="linkbtn" data-act="trpick" data-v="${esc(a)}" title="과제 역추적">${esc(a)}</button>`).join('') : ''}` : '—'}</td></tr>`).join('')}
     </tbody></table></div>${res.length > 200 ? '<p class="mute sm mt">앞 200건만 표시합니다. CSV에는 전체가 담깁니다.</p>' : ''}
   </section>` : ds.run ? '' : slide('검색 <b>안내</b>', `<ul class="bul"><li>여러 출처를 한 번에 검색해 같은 논문(DOI 또는 제목·연도가 같은 것)은 하나로 합칩니다.</li><li>"한국연구재단 지원 논문만" 을 켜면 OpenAlex·Crossref의 연구비 정보로 재단 지원 논문만 남기고, 과제번호가 있으면 함께 보여줍니다.</li><li>결과는 연도별 분포, 저자·학술지·분야 순위, 피인용 상위로 분석하고, 골라서 성과 후보로 보낼 수 있습니다.</li></ul>`)}`;
 };
@@ -208,6 +237,7 @@ Object.assign(ACT, {
   dsnrf: (_, t) => { state.ds.nrf = t.checked; },
   dsdom: v => { state.ds.dom = v; },
   dson: v => { state.ds.on[v] = !state.ds.on[v]; render(); },
+  dsmore: () => dsMore(),
   dsgo: () => { state.ds.q = $('#dsq')?.value.slice(0, 200) || state.ds.q; dsSearch(); },
   dskey: (v, t) => { const c = dsCfg(); if (v.trim()) c.keys[t.dataset.id] = v.trim(); else delete c.keys[t.dataset.id]; dsSave(c); render(); },
   dstpl: (v, t) => { const c = dsCfg(), s = dsSources().find(x => x.id === t.dataset.id); if (!/^https?:\/\//i.test(v.trim())) return toast('요청 주소는 http:// 또는 https:// 로 시작해야 합니다.');
@@ -222,7 +252,7 @@ Object.assign(ACT, {
   dsdel: v => { const c = dsCfg(); c.custom = c.custom.filter(x => x.id !== v); delete c.keys[v]; dsSave(c); delete state.ds.on[v]; render(); },
   dstest: async v => {
     const s = dsSources().find(x => x.id === v), ds = state.ds; ds.st[v] = { state: 'run' }; render();
-    try { const o = { q: s.proxy ? '연구' : 'research', from: 2015, to: 2026, n: 3, nrf: false }, key = dsCfg().keys[v] || ''; const r = DS_RUN[v] ? await DS_RUN[v](s, o, key) : await runTemplate(s, o, key); ds.st[v] = { state: 'ok', n: r.rows.length, total: r.total }; }
+    try { await dsProxy(true); const o = { q: s.proxy ? '연구' : 'research', from: 2015, to: 2026, n: 3, nrf: false, page: 1 }, key = dsKey(s); const r = DS_RUN[v] ? await DS_RUN[v](s, o, key) : await runTemplate(s, o, key); ds.st[v] = { state: 'ok', n: r.rows.length, total: r.total }; }
     catch (e) { ds.st[v] = { state: 'err', msg: e.message }; }
     render();
   },
@@ -245,3 +275,5 @@ Object.assign(ACT, {
 dsProxy();
 // 검색어 칸에서 Enter로 바로 검색
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'dsq') { e.preventDefault(); ACT.dsgo(); } });
+
+R.dsearch = () => `<div class="chips subtabs">${DS_SUBS.map(([v, l]) => `<button class="chip ${state.dsub === v ? 'on' : ''}" data-act="nav" data-v="dsearch:${v}">${l}</button>`).join('')}</div>${DSV[state.dsub]()}`;

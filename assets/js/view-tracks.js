@@ -218,7 +218,7 @@ const evidenceSec = it => {
       : `<p class="mute sm">등록한 근거가 없어 예시 건수(${it.ev}건)를 표시하고 있습니다. 근거를 하나라도 등록하면 등록 건수로 판정합니다.</p>`}
     <div class="evform toolbar" style="margin:12px 0 0"><select class="field" aria-label="근거 유형" data-f="type" style="flex:0 1 150px">${EV_TYPES.map(t => `<option>${t}</option>`).join('')}</select>
       <input class="field" data-f="title" placeholder="근거 제목 (필수)" aria-label="근거 제목"><input class="field" data-f="url" placeholder="링크 https://… (선택)" aria-label="근거 링크"><input class="field" data-f="note" placeholder="메모 (선택)" aria-label="근거 메모">
-      <button class="btn pri" data-act="evadd" data-id="${it.id}">근거 추가</button></div></div>`;
+      <button class="btn pri" data-act="evadd" data-id="${it.id}">근거 추가</button></div>${isAdmin() && typeof lookupSec === 'function' ? lookupSec(it) : ''}</div>`;
 };
 const INT_TAGS = ['첫 지원', '전환점', '지원이 만든 차이', '후속세대 양성', '정책 제언'];
 const interviewNote = it => { const iv = db.data.interviews.find(x => x.id === it.id && x.memo); return iv ? `${esc(iv.memo)}${iv.tags?.length ? `<br>${iv.tags.map(t => `<span class="tag">${esc(t)}</span>`).join(' ')}` : ''}` : ''; };
