@@ -37,8 +37,7 @@ const render = () => {
   document.body.classList.toggle('mode-public', !staff());
   document.title = `${v.t.join(' ')} · 대한민국 연구 50년`;
   $('.brand-t').innerHTML = '대한민국 연구 <b>50년</b>'; $('.brand-s').textContent = '장기 파급효과 추적 플랫폼';
-  // 버전: config.js의 VERSION(YYYYMMDD-n)을 v2026.10.27-3 꼴로 보여준다
-  $('.brand-v').textContent = `v${CONFIG.VERSION.replace(/^(\d{4})(\d{2})(\d{2})/, '$1.$2.$3')}`;
+  $('.brand-v').textContent = `v${CONFIG.VERSION}`;
   $('.side-note').innerHTML = `<b>안내</b>${staff() ? '체계·기준·일정은 연구계획서의 제안값(안)입니다. 후보·점수·투입액 등 수치는 시연용 예시이며 실제 선정 결과가 아닙니다.' : '이 화면의 성과·연구자와 수치는 플랫폼 시연용 예시이며 실제 선정 결과가 아닙니다.'}`;
   $('#sidetools').innerHTML = sideTools();
   $('#nav').innerHTML = views.map((q, j) => { const s = SUBMAP[q.id];

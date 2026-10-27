@@ -1,7 +1,8 @@
 // 브라우저에 노출되는 키다. Google Cloud 콘솔에서 HTTP 리퍼러(배포 도메인·localhost)와 Maps JavaScript API로 사용을 제한할 것.
 const CONFIG = {
-  // 배포할 때마다 올린다. index.html의 ?v= 값과 BUILD 값도 같이 맞춘다 (브라우저가 옛 파일을 쓰지 않게 한다)
-  VERSION: '20261027-3',
+  // 버전(주.부.수). 배포할 때마다 올리고 index.html의 ?v= 값과 BUILD 값도 같이 맞춘다 (화면 표시와 브라우저 캐시 갱신에 쓴다)
+  // 큰 변화는 주 번호, 기능 추가는 부 번호, 수정은 수 번호를 올린다
+  VERSION: '1.0.0',
   // 연구진 공유 저장소. 비워 두면 각자 브라우저에만 저장한다 (표 정의: supabase/schema.sql)
   SUPABASE_URL: '',
   SUPABASE_ANON_KEY: '',
