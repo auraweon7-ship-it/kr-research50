@@ -110,7 +110,7 @@ Object.assign(ACT, {
     const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('nrf50:' + pw)))].map(b => b.toString(16).padStart(2, '0')).join('');
     if (h !== CONFIG.ADMIN_HASH) { msg.textContent = '암호가 맞지 않습니다.'; $('#loginpw').select(); return; }
     state.admin = true; try { sessionStorage.setItem('nrf50.admin', '1'); } catch (e) { /* 저장 불가 환경 */ }
-    state.mode = 'staff'; LS.set('nrf50.mode', 'staff'); $('#login').hidden = true; render(); toast('관리자 모드입니다. 연구 관리 메뉴가 열렸습니다.');
+    state.mode = 'staff'; LS.set('nrf50.mode', 'staff'); $('#login').hidden = true; render(); toast('관리자 모드입니다. 연구 관리와 데이터 검색 메뉴가 열렸습니다.');
   },
   lang: () => { state.lang = state.lang === 'ko' ? 'en' : 'ko'; LS.set('nrf50.lang', state.lang); render(); },
   share: async v => { const url = `${location.origin}${location.pathname}#/${byId(v).kind === 'o' ? 'outcomes' : 'people'}/${v}`; try { await navigator.clipboard.writeText(url); toast('이 화면의 주소를 복사했습니다.'); } catch (e) { prompt('주소를 복사하세요.', url); } },

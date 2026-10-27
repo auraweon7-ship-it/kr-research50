@@ -362,6 +362,10 @@ details.alt{margin-top:14px}details.alt summary{cursor:pointer;font-weight:700;f
 .adminbtn:hover{color:var(--ink)}.adminbtn.on{color:#fff;background:linear-gradient(135deg,#5ED6B8,var(--blue));box-shadow:4px 4px 12px var(--lo)}
 .loginbox{width:min(400px,100%);display:flex;flex-direction:column;gap:14px}.loginbox h2{font-size:20px}.loginbox .field{width:100%}.loginbox .warn{min-height:18px}
 @media (max-width:820px){.head-r{gap:8px}.adminbtn span{display:none}}
+.dskey{width:170px;padding:7px 10px;font-size:12px}.dstpl{width:100%;min-width:260px;padding:7px 10px;font-size:11.5px;font-family:ui-monospace,Consolas,monospace}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.92em;padding:1px 5px;border-radius:6px;background:#DFE3EA}
+table.dsres td{vertical-align:top}table.dsres td:nth-child(3){min-width:260px}table.dsres a{color:var(--ink);font-weight:600}
+.chip .tag{margin-left:4px;font-size:10px;padding:1px 7px}
 .site-foot{margin-top:44px;padding:20px 24px;border-radius:22px;box-shadow:var(--in);text-align:center;font-size:13px;font-weight:600}
 .site-foot .dots{justify-content:center;margin:0 0 8px}
 .site-foot span{color:#A9B2C3;margin:0 8px;font-weight:400}
