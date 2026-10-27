@@ -92,7 +92,7 @@ const Card = ({ c }) => {
     h('div', { style: { position: 'absolute', width: 330, height: 310, left: -110, bottom: 120 + Math.sin(f / 20) * 26, borderRadius: BLOB1, background: '#fff', opacity: .09, transform: `rotate(${-f / 5}deg)` } }),
     h('div', { style: { position: 'absolute', left: 80, right: 80, top: 80, display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: a.fade(0, 10) } },
       h('div', { style: { display: 'flex', alignItems: 'center', gap: 16, fontSize: 36, fontWeight: 700 } }, ['#EC5C8D', '#F6A53A', '#27B894'].map(x => h('i', { key: x, style: { width: 22, height: 22, borderRadius: 6, background: x, border: '3px solid #fff' } })), h('span', { style: { marginLeft: 8 } }, '대한민국 연구 50년')),
-      h('div', { style: { display: 'flex', gap: 12 } }, [0, 1, 2, 3, 4].map(i => h('i', { key: i, style: { width: i === c.index ? 54 : 18, height: 18, borderRadius: 9, background: '#fff', opacity: i === c.index ? 1 : .4 } })))),
+      h('div', { style: { display: 'flex', gap: 12 } }, Array.from({ length: c.total || 5 }, (_, i) => i).map(i => h('i', { key: i, style: { width: i === c.index ? 54 : 18, height: 18, borderRadius: 9, background: '#fff', opacity: i === c.index ? 1 : .4 } })))),
     h('div', { style: { opacity: out } }, h(SCENES[c.type], { c, a })),
     h('div', { style: { position: 'absolute', left: 80, right: 80, bottom: 76, display: 'flex', justifyContent: 'space-between', fontSize: 27, opacity: .8 } },
       h('span', null, '한국연구재단 | 한국외국어대학교'), h('span', null, `${c.ref} · 예시 데이터`)));

@@ -2,7 +2,7 @@
 -- assets/config.js 의 SUPABASE_URL 과 SUPABASE_ANON_KEY 를 채우면 플랫폼이 이 표로 동기화한다.
 --
 -- 한 행이 한 종류의 상태다: status(검증 단계), evidence(근거 패키지), review(선정위 심의),
--- interviews(인터뷰), imported(가져온 데이터).
+-- interviews(인터뷰), imported(가져온 데이터), linked(데이터 검색 결과를 성과·연구자 항목에 연결한 자료).
 
 create table if not exists public.nrf50_state (
   key        text primary key,

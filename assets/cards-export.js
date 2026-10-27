@@ -103,7 +103,7 @@ const cardFg = (c, s, idx) => {
   c.textBaseline = 'top'; c.textAlign = 'left';
   ['#EC5C8D', '#F6A53A', '#27B894'].forEach((col, i) => { c.fillStyle = '#fff'; rr(c, 80 + i * 38, 84, 28, 28, 8); c.fill(); c.fillStyle = col; rr(c, 83 + i * 38, 87, 22, 22, 6); c.fill(); });
   c.fillStyle = '#fff'; c.font = `700 36px ${CF}`; c.fillText('대한민국 연구 50년', 208, 80);
-  let dx = 1000; for (let i = 4; i >= 0; i--) { const w = i === idx ? 54 : 18; dx -= w; c.globalAlpha = i === idx ? 1 : .4; rr(c, dx, 89, w, 18, 9); c.fill(); dx -= 12; }
+  let dx = 1000; for (let i = (s.total || 5) - 1; i >= 0; i--) { const w = i === idx ? 54 : 18; dx -= w; c.globalAlpha = i === idx ? 1 : .4; rr(c, dx, 89, w, 18, 9); c.fill(); dx -= 12; }
   c.font = `400 27px ${CF}`; c.globalAlpha = .8; c.fillText('한국연구재단 | 한국외국어대학교', 80, 1812); c.textAlign = 'right'; c.fillText(`${s.ref} · 예시 데이터`, 1000, 1812); c.textAlign = 'left'; c.globalAlpha = 1;
   const kick = y => { rr(c, 80, y + 16, 70, 8, 4); c.fill(); c.font = `700 40px ${CF}`; c.globalAlpha = .9; c.fillText(s.kicker, 168, y); c.globalAlpha = 1; return y + 48; };
   CDRAW[s.type](c, s, kick);

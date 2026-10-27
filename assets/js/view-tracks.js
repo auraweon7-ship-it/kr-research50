@@ -239,7 +239,7 @@ const detail = it => {
         ${CRIT.map((l, i) => `<div class="kv" style="grid-template-columns:150px 1fr 34px"><span>${l}</span><div class="bar"><span style="width:${it.scores[i]}%;background:${d.color}"></span></div><b>${it.scores[i]}</b></div>`).join('')}
         <p class="sm mt">${trackDots(it)} <span class="mute">· ${it.track === 'both' ? '핵심 후보(두 트랙 공통)' : '추가 근거 확인 대상'}</span></p>`;
   const tail = `<div class="sec"><h3>${o ? '연계 연구자' : '연계 대표 성과'}</h3><div class="chips mt">${links.map(l => `<button class="chip" data-act="open" data-v="${l.id}">${l.kind === 'p' ? `${l.title} · ${l.field}` : l.title}</button>`).join('') || '<span class="mute sm">연계 후보 없음</span>'}</div></div>
-    ${evidenceSec(it)}<div class="sec staff-only"><h3>검증 단계 지정</h3><div class="chips mt">${STAGES.map((st, i) => `<button class="btn ${stageOf(it) === i ? 'on' : ''}" data-act="stage" data-v="${i}" data-id="${it.id}">${st}</button>`).join('')}</div></div>`;
+    ${typeof linkedSec === 'function' ? linkedSec(it) : ''}${evidenceSec(it)}<div class="sec staff-only"><h3>검증 단계 지정</h3><div class="chips mt">${STAGES.map((st, i) => `<button class="btn ${stageOf(it) === i ? 'on' : ''}" data-act="stage" data-v="${i}" data-id="${it.id}">${st}</button>`).join('')}</div></div>`;
 
   if (o) {
     const span = it.path[3].year - it.path[0].year;
@@ -248,7 +248,7 @@ const detail = it => {
     <div class="sec"><h3>2. 지원 이력 · 3. 영향경로</h3><p class="mute sm">현재의 활용 단계에서 초기 지원 과제까지 역추적한 경로 (지원사업 연계 기술·학술 발전 경로도)</p>
       <div class="flow">${it.path.map((p, i) => `${i ? arrow : ''}<div class="flow-item"><div class="blob ${G[(i + 3) % 4]} b${i % 3 + 1}">${i + 1}</div><div class="yr">${p.year}</div><h4>${PATH_STAGES[i]}</h4><p><b>${p.program}</b><br>${p.desc}</p></div>`).join('')}</div>
       ${tbl(['단계', '시기', '지원 사업', '연구 주체', '주요 산출물'], it.path.map((p, i) => [PATH_STAGES[i], p.year, p.program, PATH_ACTOR[i], PATH_OUT[i]]))}</div>
-    ${pathAnalysis(it)}
+    ${typeof tlSec === 'function' ? tlSec(it) : ''}${pathAnalysis(it)}
     <div class="row c2 sec" style="margin-bottom:0">
       <div><h3>4. 기여 유형·강도</h3>${info([['주 유형', `${s.k} ${it.ctype}`], ['부 유형', it.sub ? `${STORY[it.sub].k} ${it.sub}` : '<span class="mute">해당 없음</span>'], ['기여 강도', `${g.label} · 계수 ${g.coef.toFixed(1)}`], ['판정 근거(예)', g.ev], ['대안 설명', it.alts.map(a => `<span class="tag">${a}</span>`).join(' ') || '<span class="mute">확인된 병행 요인 없음</span>']])}</div>
       <div><h3>단계별 기여 구성</h3>${it.mix.map((mm, i) => `<div class="srow" style="grid-template-columns:100px 1fr"><span class="sm">${PATH_STAGES[i]}</span>${stack(mm)}</div>`).join('')}${legend(FACTORS)}</div>
@@ -267,7 +267,7 @@ const detail = it => {
     <div class="sec"><h3>성장 궤적 · 연구자 생애주기 성장 흐름도</h3><p class="mute sm">지원 이력 × 성과 이력 × 역할 변화를 시계열로 결합</p>
       <div class="flow">${it.life.map((p, i) => `${i ? arrow : ''}<div class="flow-item"><div class="blob ${G[i % 4]} b${i % 3 + 1}" style="width:${56 + i * 7}px;height:${52 + i * 7}px">${i + 1}</div><div class="yr">${p.year}${p === turn ? ' · 전환점' : ''}</div><h4>${p.stage}</h4><p><b>${p.program}</b><br>${p.out}</p></div>`).join('')}</div></div>
     <div class="sec"><h3>지원 이력</h3>${tbl(['지원 단계', '시기', '사업(유형 예시)', '역할', '주요 산출'], it.life.map((p, i) => [p.stage, `${p.year}~`, p.program, ROLES[i], p.out]))}</div>
-    ${growthAnalysis(it)}
+    ${typeof tlSec === 'function' ? tlSec(it) : ''}${growthAnalysis(it)}
     <div class="sec"><h3>성과 이력</h3><div class="row c5" style="margin:12px 0 0;gap:14px">${[[it.papers, '편', '대표 논문·저서'], [it.patents, '건', '특허·기술이전'], [it.awards, '회', '수상'], [it.startup ? '있음' : '—', '', '창업'], [it.policy, '건', '정책·자문 활동']].map(([n, u, l]) => `<div class="tile"><div class="n" style="font-size:22px">${n}<small> ${u}</small></div><div class="l">${l} (예시)</div></div>`).join('')}</div></div>
     <div class="row c2 sec" style="margin-bottom:0">
       <div><h3>기여 강도 · ${g.label}</h3><div class="story">${g.def}<br><span class="mute">판정 근거(예): ${g.ev}</span></div></div>

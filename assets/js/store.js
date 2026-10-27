@@ -1,12 +1,12 @@
 /* 저장소: 기본은 이 브라우저(localStorage). config.js에 Supabase 주소와 키를 넣으면 연구진이 함께 쓰는 공유 저장소로 동기화한다.
-   공유 대상은 검증 단계, 근거 패키지, 선정위 심의, 인터뷰, 가져온 데이터다. 표는 supabase/schema.sql 참고. */
+   공유 대상은 검증 단계, 근거 패키지, 선정위 심의, 인터뷰, 가져온 데이터, 항목별 연결 자료다. 표는 supabase/schema.sql 참고. */
 const LS = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 저장 불가 환경에서는 세션 내 상태만 유지 */ } },
 };
 const db = {
-  KEYS: ['status', 'evidence', 'review', 'interviews', 'imported'],
-  data: { status: {}, evidence: {}, review: {}, interviews: [], imported: { o: [], p: [] } },
+  KEYS: ['status', 'evidence', 'review', 'interviews', 'imported', 'linked'],
+  data: { status: {}, evidence: {}, review: {}, interviews: [], imported: { o: [], p: [] }, linked: {} },
   load() {
     const d = LS.get('nrf50.db', null);
     if (d) for (const k of this.KEYS) if (d[k] !== undefined) this.data[k] = d[k];

@@ -46,7 +46,7 @@ const render = () => {
   const lead = cur && cur[0] !== first ? `<b style="color:var(--ink)">${cur[1]}</b> · ${cur[2]}${v.id === 'outreach' ? (state.sub === 'cards' ? ' 확산 콘텐츠' : ' 시각화 자료 예제') : ''}` : v.sub;
   $('#main').innerHTML = `<header class="page-head"><div><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><h1>${v.t[0]} <b>${v.t[1]}</b></h1><p>${lead}</p></div><div class="head-r"><button class="adminbtn ${isAdmin() ? 'on' : ''}" data-act="adminbtn" aria-label="${isAdmin() ? '관리자 모드 로그아웃' : '관리자 모드 로그인'}" title="${isAdmin() ? '관리자 모드 · 누르면 로그아웃' : '관리자 모드 로그인'}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="3"/><path d="${isAdmin() ? 'M8 11V7a4 4 0 0 1 7.5-2' : 'M8 11V7a4 4 0 0 1 8 0v4'}"/><circle cx="12" cy="16" r="1.3" fill="currentColor"/></svg>${isAdmin() ? '<span>관리자</span>' : ''}</button><div class="badge-no" aria-hidden="true"><span>${String(i + 1).padStart(2, '0')}</span></div></div></header>${R[v.id]()}
     <footer class="site-foot"><div class="dots sm" aria-hidden="true"><i></i><i></i><i></i></div>한국연구재단 <span>|</span> 한국외국어대학교(연구책임자: 박정원 교수)</footer>`;
-  renderGrid(); renderRank(); mountMap(); mountGraph(); mountCards(); graphKeys(); if (typeof coMount === 'function') coMount();
+  renderGrid(); renderRank(); mountMap(); mountGraph(); mountCards(); graphKeys(); if (typeof coMount === 'function') coMount(); if (typeof infoMotion === 'function') infoMotion();
   if (state.open) showModal(state.open); else $('#modal').hidden = true;
   applyLang($('.side')); applyLang($('#main'));
 };
@@ -127,6 +127,7 @@ Object.assign(ACT, {
   evdel: (v, t) => { const id = t.dataset.id; db.data.evidence[id].splice(+v, 1); db.save('evidence'); reopen(id); },
   region: v => { state.region = v; render(); },
   card: v => { state.card = v; syncHash(false); render(); },
+  cardn: v => { state.cardN = Math.min(CARD_MAX, Math.max(CARD_MIN, +v || 5)); LS.set('nrf50.cardn', state.cardN); render(); },
   cardzip: async (v, t) => {
     if (gc.busy) return; gc.busy = true;
     const label = t.textContent, items = v === 'one' ? [cardItem()] : v === 'all' ? [...cardTop('o'), ...cardTop('p')] : cardTop(v);
