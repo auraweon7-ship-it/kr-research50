@@ -64,7 +64,7 @@ const VIEWS = [
   { id: 'network', t: ['연구', '네트워크'], sub: '대표 성과와 대표 연구자가 서로 어떻게 이어져 있는지 그래프로 탐색합니다. 성과–연구자 연계, 공동연구, 인용·후속과제 계보, 사제 관계를 한 화면에서 봅니다.' },
   { id: 'contribution', staff: true, t: ['정부 지원', '기여도 분석'], sub: '성과를 재단에 귀속하지 않고, 정부·연구자·기관·기업의 복합 요인 속에서 재단 지원의 기여를 근거 수준과 함께 제시합니다.' },
   { id: 'outreach', t: ['홍보', '확산'], sub: '「50년 대표 성과·연구자 사례집」 기획·원고와 성과 시각화 자료 구성안. 시각화 자료 네 가지는 하위 메뉴에서 예제로 볼 수 있습니다.' },
-  { id: 'admin', admin: true, t: ['연구', '관리'], sub: '실데이터 가져오기, 선정위원회 심의, 균형 점검, 민감도 분석, 인터뷰 관리. 연구진이 발굴·검증 작업에 쓰는 도구입니다.' },
-  { id: 'dsearch', admin: true, t: ['데이터', '검색'], sub: 'NTIS·KRM·RISS·KCI·Scopus·NCBI·OpenAlex·Semantic Scholar·Crossref를 한 번에 검색하고 연도·저자·학술지·분야·피인용으로 분석합니다. API 키와 요청 주소는 직접 입력합니다.' },
+  { id: 'admin', admin: true, staff: true, t: ['연구', '관리'], sub: '실데이터 가져오기, 선정위원회 심의, 균형 점검, 민감도 분석, 인터뷰 관리. 연구진이 발굴·검증 작업에 쓰는 도구입니다.' },
+  { id: 'dsearch', admin: true, staff: true, t: ['데이터', '검색'], sub: 'NTIS·KRM·RISS·KCI·Scopus·NCBI·OpenAlex·Semantic Scholar·Crossref를 한 번에 검색하고 연도·저자·학술지·분야·피인용으로 분석합니다. API 키와 요청 주소는 직접 입력합니다.' },
 ];
 const R = {};
