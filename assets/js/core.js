@@ -66,5 +66,6 @@ const VIEWS = [
   { id: 'outreach', t: ['홍보', '확산'], sub: '「50년 대표 성과·연구자 사례집」 기획·원고와 성과 시각화 자료 구성안. 시각화 자료 네 가지는 하위 메뉴에서 예제로 볼 수 있습니다.' },
   { id: 'admin', admin: true, staff: true, t: ['연구', '관리'], sub: '실데이터 가져오기, 선정위원회 심의, 균형 점검, 민감도 분석, 인터뷰 관리. 연구진이 발굴·검증 작업에 쓰는 도구입니다.' },
   { id: 'dsearch', admin: true, staff: true, t: ['데이터', '검색'], sub: 'NTIS·KRM·RISS·KCI·Scopus·NCBI·OpenAlex·Semantic Scholar·Crossref를 한 번에 검색하고 연도·저자·학술지·분야·피인용으로 분석합니다. API 키와 요청 주소는 직접 입력합니다.' },
+  { id: 'pool', admin: true, staff: true, t: ['모집단', '구축'], sub: '범위 설정 → NTIS·KRM 일괄 수집 → 연구자 식별·중복 정제 → 재단 DB 대조 → 영역·시대별 후보군 풀 확정. 수집 자료는 이 브라우저(IndexedDB)에 저장됩니다.' },
 ];
 const R = {};

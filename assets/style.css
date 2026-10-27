@@ -428,3 +428,9 @@ button.tile{cursor:pointer;transition:transform .15s}button.tile:hover{transform
   table{display:block;overflow-x:auto}
 }
 @media print{.side,.toolbar,.btn{display:none!important}.app{display:block}.slide{box-shadow:none;border:1px solid #ccd;break-inside:avoid}}
+/* 10 모집단 구축 */
+.planform textarea.field{width:100%;resize:vertical;font-family:inherit;line-height:1.55}
+table.dsres tr[data-act]{cursor:pointer}table.dsres tr[data-act]:hover td{background:rgba(61,159,230,.06)}
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0}
+.cnode{padding:10px 14px;border-radius:16px;color:#fff;font-size:12px;line-height:1.4;text-align:center;min-width:84px;box-shadow:4px 4px 10px rgba(0,0,0,.12)}
+.carrow{color:var(--mute);font-weight:700}

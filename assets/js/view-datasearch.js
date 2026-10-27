@@ -9,13 +9,15 @@ const DS_SRC = [
   { id: 's2', name: 'Semantic Scholar', key: '선택', desc: '논문·피인용·분야. 키가 없으면 요청 한도가 매우 낮습니다.', doc: 'https://api.semanticscholar.org/api-docs/', auto: true },
   { id: 'scopus', name: 'Scopus', key: '필수', desc: 'Elsevier 인용 데이터베이스. 기관 구독 키가 필요합니다.', doc: 'https://dev.elsevier.com/', nrf: true },
   { id: 'ntis', name: 'NTIS', key: '필수', desc: '국가R&D 과제·성과. 응답은 XML입니다.', doc: 'https://www.ntis.go.kr/rndopen/api/mng/apiMain.do', proxy: true,
-    tpl: 'https://www.ntis.go.kr/rndopen/openApi/public_project?apprvKey={key}&collection=project&SRWR={q}&searchRnkn=SCORE/DESC&startPosition=1&displayCnt={n}' },
+    tpl: 'https://www.ntis.go.kr/rndopen/openApi/public_project?apprvKey={key}&collection=project&SRWR={q}&searchRnkn=SCORE/DESC&startPosition={start}&displayCnt={n}' },
   { id: 'kci', name: 'KCI', key: '필수', desc: '국내 학술지 논문과 인용 정보. 응답은 XML입니다.', doc: 'https://www.kci.go.kr/kciportal/po/openapi/openApiList.kci', proxy: true,
     tpl: 'https://open.kci.go.kr/po/openapi/openApiSearch.kci?apiCode=articleSearch&key={key}&title={q}&displayCount={n}&page=1' },
   { id: 'riss', name: 'RISS', key: '필수', desc: '학위논문·국내외 학술지. 응답은 XML입니다.', doc: 'https://www.riss.kr/openApi', proxy: true,
     tpl: 'http://www.riss.kr/openApi?key={key}&version=1.0&type=T&keyword={q}&rowcount={n}' },
   { id: 'krm', name: 'KRM', key: '필수', desc: '인문사회 연구과제·결과보고서 (공공데이터포털). 포털에서 받은 요청 주소를 넣어 주세요.', doc: 'https://www.data.go.kr', proxy: true,
-    tpl: 'https://apis.data.go.kr/(공공데이터포털에서 확인한 KRM 주소)?serviceKey={key}&keyword={q}&numOfRows={n}&pageNo=1' },
+    tpl: 'https://apis.data.go.kr/(공공데이터포털에서 확인한 KRM 주소)?serviceKey={key}&keyword={q}&numOfRows={n}&pageNo={page}' },
+  { id: 'kipris', name: 'KIPRIS', key: '필수', desc: '특허·실용신안 (KIPRIS Plus). 응답은 XML입니다. 요청 주소는 KIPRIS Plus 이용 안내에서 확인해 주세요.', doc: 'https://plus.kipris.or.kr', proxy: true,
+    tpl: 'http://plus.kipris.or.kr/openapi/rest/patUtiModInfoSearchSevice/freeSearchInfo?word={q}&accessKey={key}&numOfRows={n}&pageNo={page}' },
 ];
 const dsCfg = () => LS.get('nrf50.dsapi', { keys: {}, tpl: {}, custom: [], mailto: '' });
 const dsSave = c => LS.set('nrf50.dsapi', c);
