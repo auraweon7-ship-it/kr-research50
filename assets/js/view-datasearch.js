@@ -18,6 +18,15 @@ const DS_SRC = [
     tpl: 'https://apis.data.go.kr/(공공데이터포털에서 확인한 KRM 주소)?serviceKey={key}&keyword={q}&numOfRows={n}&pageNo={page}' },
   { id: 'kipris', name: 'KIPRIS', key: '필수', desc: '특허·실용신안 (KIPRIS Plus). 응답은 XML입니다. 요청 주소는 KIPRIS Plus 이용 안내에서 확인해 주세요.', doc: 'https://plus.kipris.or.kr', proxy: true,
     tpl: 'http://plus.kipris.or.kr/openapi/rest/patUtiModInfoSearchSevice/freeSearchInfo?word={q}&accessKey={key}&numOfRows={n}&pageNo={page}' },
+  // 파급 근거 자료원(학술 밖): 언론·정책 인용·기술이전·특허 피인용. 요청 주소는 각 기관 안내에서 받아 넣는다
+  { id: 'bigkinds', name: '빅카인즈 (언론)', key: '필수', desc: '언론 보도 (한국언론진흥재단 BIG KINDS). 성과의 사회적 확산·국민 체감 근거. 기관 API 안내에서 받은 GET 요청 주소를 넣어 주세요.', doc: 'https://www.bigkinds.or.kr', proxy: true,
+    tpl: 'https://tools.kinds.or.kr/(빅카인즈에서 확인한 검색 주소)?access_key={key}&query={q}&size={n}' },
+  { id: 'nanet', name: '국회도서관 (정책)', key: '필수', desc: '국회도서관 소장 정책자료·입법조사 보고서. 정책 인용·반영 근거. 국회도서관 Open API에서 받은 요청 주소를 넣어 주세요.', doc: 'https://www.nanet.go.kr', proxy: true,
+    tpl: 'https://www.nanet.go.kr/(국회도서관 Open API에서 확인한 검색 주소)?key={key}&search={q}&displaylines={n}' },
+  { id: 'ntb', name: '국가기술은행 (기술이전)', key: '필수', desc: '기술이전·사업화 정보 (공공데이터포털). 기술료·사업화 성과 근거.', doc: 'https://www.data.go.kr', proxy: true,
+    tpl: 'https://apis.data.go.kr/(공공데이터포털에서 확인한 국가기술은행 주소)?serviceKey={key}&keyword={q}&numOfRows={n}&pageNo={page}' },
+  { id: 'kiprisc', name: 'KIPRIS 피인용', key: '필수', desc: '특허 간 인용(피인용) 정보 (KIPRIS Plus). 기술 파급 근거. KIPRIS Plus 인용 서비스 주소를 넣어 주세요.', doc: 'https://plus.kipris.or.kr', proxy: true,
+    tpl: 'http://plus.kipris.or.kr/openapi/rest/(KIPRIS Plus에서 확인한 인용정보 서비스 주소)?applicationNumber={q}&accessKey={key}' },
 ];
 const dsCfg = () => LS.get('nrf50.dsapi', { keys: {}, tpl: {}, custom: [], mailto: '' });
 const dsSave = c => LS.set('nrf50.dsapi', c);

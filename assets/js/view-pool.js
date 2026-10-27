@@ -28,9 +28,43 @@ const idb = {
   p: null,
   open() { return this.p ||= new Promise((res, rej) => { const r = indexedDB.open('nrf50-pool', 1); r.onupgradeneeded = () => { const d = r.result; for (const [n, k] of [['rec', 'key'], ['log', 'id'], ['meta', 'k']]) if (!d.objectStoreNames.contains(n)) d.createObjectStore(n, { keyPath: k }); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   async all(s) { const d = await this.open(); return new Promise((res, rej) => { const q = d.transaction(s).objectStore(s).getAll(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); },
-  async put(s, items) { const d = await this.open(); return new Promise((res, rej) => { const t = d.transaction(s, 'readwrite'), st = t.objectStore(s); for (const x of [].concat(items)) st.put(x); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); },
-  async del(s, keys) { const d = await this.open(); return new Promise((res, rej) => { const t = d.transaction(s, 'readwrite'), st = t.objectStore(s); for (const k of [].concat(keys)) st.delete(k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); },
+  async put(s, items) { const d = await this.open(); poolSrv.queue(s, items); return new Promise((res, rej) => { const t = d.transaction(s, 'readwrite'), st = t.objectStore(s); for (const x of [].concat(items)) st.put(x); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); },
+  async del(s, keys) { const d = await this.open(); poolSrv.dequeue(s, keys); return new Promise((res, rej) => { const t = d.transaction(s, 'readwrite'), st = t.objectStore(s); for (const k of [].concat(keys)) st.delete(k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); },
   async clear(s) { const d = await this.open(); return new Promise((res, rej) => { const t = d.transaction(s, 'readwrite'); t.objectStore(s).clear(); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); },
+};
+// 서버 공유(1): 관리자·연구진이 로그인해 있으면 레코드·로그·설정을 서버(/api/kv)와 주고받아 연구진이 같은 모집단을 본다
+const poolSrv = {
+  NS: { rec: 'pool', log: 'poollog', meta: 'poolmeta' }, KEY: { rec: 'key', log: 'id', meta: 'k' }, q: { rec: {}, log: {}, meta: {} }, dq: { rec: [], log: [], meta: [] }, t: null, mute: false, last: null, err: '',
+  on: () => isAdmin() && typeof srvOk === 'function' && srvOk(),
+  queue(s, items) { if (this.mute || !this.on()) return; for (const x of [].concat(items)) this.q[s][x[this.KEY[s]]] = x; this.kick(); },
+  dequeue(s, keys) { if (this.mute || !this.on()) return; this.dq[s].push(...[].concat(keys)); this.kick(); },
+  kick() { clearTimeout(this.t); this.t = setTimeout(() => this.flush(), 1500); },
+  async flush() {
+    for (const s of Object.keys(this.NS)) {
+      const items = this.q[s]; this.q[s] = {}; const keys = this.dq[s]; this.dq[s] = [];
+      try {
+        const ids = Object.keys(items); for (let i = 0; i < ids.length; i += 500) await apiJ(`/api/kv/${this.NS[s]}`, { method: 'POST', body: { items: Object.fromEntries(ids.slice(i, i + 500).map(k => [k, items[k]])) } });
+        if (keys.length) await apiJ(`/api/kv/${this.NS[s]}`, { method: 'DELETE', body: { keys } });
+        this.last = new Date(); this.err = '';
+      } catch (e) { this.err = e.message; Object.assign(this.q[s], items); }
+    }
+  },
+  // 서버 것과 이 브라우저 것을 합친다: 레코드는 나중에 바뀐 쪽, 로그는 합집합, 설정은 이 브라우저가 비어 있을 때만 서버 것
+  async pull() {
+    if (!this.on()) return;
+    try {
+      const [rec, log, meta] = await Promise.all(['pool', 'poollog', 'poolmeta'].map(n => apiJ(`/api/kv/${n}`)));
+      const t = r => r.updated || r.at || '', put = [], up = [];
+      for (const [k, r] of Object.entries(rec)) { const l = PL.rec.get(k); if (!l || t(r) > t(l)) { PL.rec.set(k, r); put.push(r); } }
+      for (const [k, l] of PL.rec) if (!rec[k] || t(l) > t(rec[k])) up.push(l);
+      const seen = new Set(PL.log.map(l => l.id)), nl = Object.values(log).filter(l => !seen.has(l.id)); PL.log = [...PL.log, ...nl].sort((a, b) => b.at.localeCompare(a.at));
+      const mput = []; for (const [k, v] of Object.entries(meta)) { const cur = PL.meta[k.replace(/^meta:/, '')]; const key = v.k; if (key in PL.meta && (cur == null || (Array.isArray(cur) ? !cur.length : !Object.keys(cur).length))) { PL.meta[key] = v.v; mput.push(v); } }
+      this.mute = true; if (put.length) await idb.put('rec', put); if (nl.length) await idb.put('log', nl); if (mput.length) await idb.put('meta', mput); this.mute = false;
+      if (up.length) this.queue('rec', up); const ul = PL.log.filter(l => !log[l.id]); if (ul.length) this.queue('log', ul);
+      for (const k of Object.keys(PL.meta)) if (!meta[k]) this.queue('meta', { k, v: PL.meta[k] });
+      this.last = new Date(); this.err = ''; this.pulled = { in: put.length, out: up.length };
+    } catch (e) { this.mute = false; this.err = e.message; }
+  },
 };
 const PL = { loaded: false, rec: new Map(), log: [], meta: { plans: [], codemap: [], lic: {}, maps: {}, persons: {}, notdup: [], fdb: null } };
 state.psub = 'plan';
@@ -43,6 +77,7 @@ const poolLoad = async () => {
     for (const m of meta) PL.meta[m.k] = m.v;
   } catch (e) { toast('브라우저 저장소(IndexedDB)를 열지 못했습니다. 사생활 보호 모드에서는 쓸 수 없습니다.'); }
   PL.loaded = true; if (state.view === 'pool') render();
+  if (poolSrv.on()) { await poolSrv.pull(); if (state.view === 'pool' || state.view === 'admin') render(); }
 };
 const metaSave = k => idb.put('meta', { k, v: PL.meta[k] }).catch(() => toast('저장하지 못했습니다.'));
 const lic = src => ({ ...(LIC0[src.split(':')[0]] || LIC0.file), ...(PL.meta.lic[src.split(':')[0]] || {}) });
@@ -295,7 +330,7 @@ PV.log = () => {
   ${slide('수집 <b>로그</b>', PL.log.length ? tbl(['일시', '계획', '자료원', '검색식', '받은 건수', '새로', '비고'], PL.log.slice(0, 100).map(l => [esc(l.at.replace('T', ' ').slice(0, 16)), esc(l.planName || '—'), esc(l.src), `<span class="sm">${esc(l.query || '')}</span>`, l.count ?? '—', l.added ?? '—', l.err ? `<span class="warn sm">${esc(l.err)}</span>` : ''])) + '<div class="chips mt"><button class="btn" data-act="plogcsv">로그 CSV</button></div>' : '<p class="mute sm mt">아직 수집 기록이 없습니다.</p>', '수집 일자·검색식·건수를 남겨 같은 조건으로 다시 수집할 수 있게 합니다.')}
   ${slide('자료원 <b>이용조건</b>', tbl(['자료원', '표기 이름', '이용조건'], Object.keys(LIC0).map(k => [esc(k), `<input class="field" value="${esc(lic(k).name)}" data-chg="plic" data-k="${k}" data-f="name">`, `<input class="field" value="${esc(lic(k).terms)}" data-chg="plic" data-k="${k}" data-f="terms" style="min-width:320px">`])),
     '자료원별 이용조건을 레코드에 붙여, 상세 화면과 후보군 확정 때 출처 문구를 자동으로 만듭니다. 기본값은 일반적인 예시이므로 각 기관의 실제 이용약관을 확인해 고쳐 주세요.')}
-  ${slide('저장 <b>상태</b>', `<p class="sm mt">이 브라우저(IndexedDB)에 레코드 ${PL.rec.size.toLocaleString()}건, 로그 ${PL.log.length}건이 있습니다. 다른 연구진과는 수집 자료 화면의 "모집단 꾸러미 내보내기·불러오기"로 주고받습니다.</p><div class="chips mt"><button class="btn" data-act="pwipe">모집단 자료 모두 지우기</button></div>`)}`;
+  ${slide('저장 <b>상태</b>', `<p class="sm mt">${poolSrv.on() ? `<span class="tag ${poolSrv.err ? 'no' : 'ok'}">서버 공유 ${poolSrv.err ? `오류: ${esc(poolSrv.err)}` : poolSrv.last ? `${poolSrv.last.toTimeString().slice(0, 5)} 동기화` : '연결 중'}</span> <button class="btn" data-act="poolsync">지금 동기화</button><br>` : '<span class="tag">이 브라우저에만 저장</span> 플랫폼 서버에 관리자·연구진으로 로그인하면 연구진이 같은 모집단을 함께 씁니다.<br>'}이 브라우저(IndexedDB)에 레코드 ${PL.rec.size.toLocaleString()}건, 로그 ${PL.log.length}건이 있습니다. 다른 연구진과는 수집 자료 화면의 "모집단 꾸러미 내보내기·불러오기"로 주고받습니다.</p><div class="chips mt"><button class="btn" data-act="pwipe">모집단 자료 모두 지우기</button></div>`)}`;
 };
 
 R.pool = () => {
@@ -413,5 +448,6 @@ Object.assign(ACT, {
       render(); toast('꾸러미를 합쳤습니다.');
     } catch (e) { toast('모집단 꾸러미 파일이 아닙니다.'); }
   },
+  poolsync: async () => { await poolSrv.flush(); await poolSrv.pull(); render(); toast(poolSrv.err ? `동기화 오류: ${poolSrv.err}` : `동기화했습니다 (받음 ${poolSrv.pulled?.in || 0} · 보냄 ${poolSrv.pulled?.out || 0}).`); },
   pwipe: async () => { if (!confirm('이 브라우저의 모집단 자료(레코드·로그·계획)를 모두 지울까요? 되돌릴 수 없습니다.')) return; await Promise.all([idb.clear('rec'), idb.clear('log'), idb.clear('meta')]); PL.rec = new Map(); PL.log = []; PL.meta = { plans: [], codemap: [], lic: {}, maps: {}, persons: {}, notdup: [], fdb: null }; render(); toast('지웠습니다.'); },
 });

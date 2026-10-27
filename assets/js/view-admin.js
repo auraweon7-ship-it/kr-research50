@@ -150,7 +150,7 @@ ADM.interview = () => {
     '주요 문항: 연구 출발과 첫 지원, 성장의 전환점, 지원이 만든 차이와 대안 요인, 후속세대 양성, 정책 제언. 주제 분석 후 2인 독립 코딩으로 신뢰도를 확보합니다.')}`;
 };
 
-R.admin = () => `<div class="chips subtabs">${ADMIN_SUBS.map(([v, l]) => `<button class="chip ${state.asub === v ? 'on' : ''}" data-act="nav" data-v="admin:${v}">${l}</button>`).join('')}</div>${ADM[state.asub]()}`;
+R.admin = () => `<div class="chips subtabs">${subsOf('admin').map(([v, l]) => `<button class="chip ${state.asub === v ? 'on' : ''}" data-act="nav" data-v="admin:${v}">${l}</button>`).join('')}</div>${ADM[state.asub]()}`;
 
 /* ---------- 동작 ---------- */
 const reviewCell = t => { const r = (db.data.review[t.dataset.id] ||= {}); return (r[t.dataset.m] ||= {}); };

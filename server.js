@@ -10,7 +10,7 @@ const ROOT = __dirname;
 const PORT = Number(process.env.PORT) || 5178;
 const HOSTS = new Set([
   'api.openalex.org', 'api.semanticscholar.org', 'api.crossref.org', 'eutils.ncbi.nlm.nih.gov', 'api.elsevier.com',
-  'www.ntis.go.kr', 'open.kci.go.kr', 'www.riss.kr', 'apis.data.go.kr', 'plus.kipris.or.kr', 'pub.orcid.org',
+  'www.ntis.go.kr', 'open.kci.go.kr', 'www.riss.kr', 'apis.data.go.kr', 'plus.kipris.or.kr', 'pub.orcid.org', 'tools.kinds.or.kr', 'www.nanet.go.kr',
   ...(process.env.PROXY_HOSTS || '').split(',').map(s => s.trim()).filter(Boolean),
 ]);
 const FORWARD = ['accept', 'x-api-key', 'x-els-apikey'];
@@ -19,17 +19,24 @@ const MAX_BYTES = 8 * 1024 * 1024;
 // 서버 공용 API 키: 환경변수 KEY_<출처>(예: KEY_NTIS, KEY_KCI, KEY_RISS, KEY_KRM, KEY_SCOPUS, KEY_S2, KEY_OPENALEX, KEY_NCBI).
 // 브라우저에는 값이 아니라 '어느 출처에 키가 있는지'만 알려 주고, 관리자 로그인 세션이 있는 요청에만 끼워 넣는다.
 const SRVKEY = '__SERVER_KEY__';
-const KEYS = Object.fromEntries(['ntis', 'kci', 'riss', 'krm', 'kipris', 'scopus', 's2', 'openalex', 'ncbi'].map(id => [id, process.env[`KEY_${id.toUpperCase()}`] || '']).filter(([, v]) => v));
+const KEYS = Object.fromEntries(['ntis', 'kci', 'riss', 'krm', 'kipris', 'kiprisc', 'bigkinds', 'nanet', 'ntb', 'scopus', 's2', 'openalex', 'ncbi'].map(id => [id, process.env[`KEY_${id.toUpperCase()}`] || '']).filter(([, v]) => v));
 // 관리자 암호 해시: 환경변수 ADMIN_HASH, 없으면 화면과 같은 assets/config.js 값
 const ADMIN_HASH = process.env.ADMIN_HASH || ((fs.readFileSync(path.join(ROOT, 'assets/config.js'), 'utf8').match(/ADMIN_HASH:\s*'([0-9a-f]{64})'/) || [])[1] || '');
 // 세션 서명 키: 환경변수 AUTH_SECRET, 없으면 실행할 때마다 새로 만든다(다시 시작하면 다시 로그인)
 const SECRET = process.env.AUTH_SECRET || crypto.randomBytes(32).toString('hex');
 const SESSION_SEC = 12 * 3600;
 const sign = v => crypto.createHmac('sha256', SECRET).update(v).digest('base64url');
-const makeToken = () => { const exp = String(Math.floor(Date.now() / 1000) + SESSION_SEC); return `${exp}.${sign(exp)}`; };
-const validToken = t => { const [exp, sig] = String(t || '').split('.'); if (!exp || !sig) return false; const want = sign(exp); return sig.length === want.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want)) && +exp > Date.now() / 1000; };
+// 세션 토큰 = 만료.사용자정보(아이디·역할).서명. 역할: admin(관리자) researcher(연구진) reviewer(선정위원) foundation(재단 담당자)
+const makeToken = (u = 'admin', r = 'admin') => { const exp = String(Math.floor(Date.now() / 1000) + SESSION_SEC), p = Buffer.from(JSON.stringify({ u, r })).toString('base64url'); return `${exp}.${p}.${sign(`${exp}.${p}`)}`; };
+const validToken = t => {
+  const [exp, p, sig] = String(t || '').split('.'); if (!exp || !p || !sig) return null;
+  const want = sign(`${exp}.${p}`); if (sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want)) || +exp <= Date.now() / 1000) return null;
+  try { const v = JSON.parse(Buffer.from(p, 'base64url').toString()); return { u: String(v.u), r: String(v.r) }; } catch (e) { return null; }
+};
 const cookies = req => Object.fromEntries((req.headers.cookie || '').split(';').map(c => c.trim().split('=')).filter(x => x[0]).map(([k, ...v]) => [k, decodeURIComponent(v.join('='))]));
-const authed = req => validToken(cookies(req).nrf50_s);
+const session = req => validToken(cookies(req).nrf50_s);
+// 서버 공용 키·AI는 관리자와 연구진만 쓴다
+const authed = req => ['admin', 'researcher'].includes(session(req)?.r);
 const secure = req => (req.headers['x-forwarded-proto'] || '').includes('https');
 // 응답에 되돌아온 키는 바이트 단위로 가린다(EUC-KR 응답도 키 자체는 ASCII)
 const scrub = (buf, key) => { if (!key) return buf; const k = Buffer.from(key), mask = Buffer.from('***'), out = []; let i = 0, j; while ((j = buf.indexOf(k, i)) >= 0) { out.push(buf.subarray(i, j), mask); i = j + k.length; } out.push(buf.subarray(i)); return Buffer.concat(out); };
@@ -86,7 +93,7 @@ function serveFile(req, res, url) {
   if (rel.endsWith('/')) rel += 'index.html';
   const file = path.normalize(path.join(ROOT, rel));
   // 루트 밖이나 숨김 파일(.git 등), 서버 설정 파일은 내주지 않는다
-  if (!file.startsWith(ROOT + path.sep) || rel.split('/').some(s => s.startsWith('.') || s === 'node_modules') || /^\/(server\.js|package(-lock)?\.json)$/.test(rel)) return send(res, 404, 'Not found');
+  if (!file.startsWith(ROOT + path.sep) || rel.split('/').some(s => s.startsWith('.') || s === 'node_modules') || /^\/(server\.js|api\.js|package(-lock)?\.json)$/.test(rel) || /^\/data\//.test(rel)) return send(res, 404, 'Not found');
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) return send(res, 404, 'Not found');
     const ext = path.extname(file).toLowerCase();
@@ -152,20 +159,62 @@ function login(req, res) {
   let body = '';
   req.on('data', c => { body += c; if (body.length > 2048) req.destroy(); });
   req.on('end', () => {
-    let pw = ''; try { pw = String(JSON.parse(body).password || ''); } catch (e) { return send(res, 400, 'Bad request'); }
-    const h = crypto.createHash('sha256').update('nrf50:' + pw).digest('hex');
-    if (!ADMIN_HASH || h.length !== ADMIN_HASH.length || !crypto.timingSafeEqual(Buffer.from(h), Buffer.from(ADMIN_HASH))) return send(res, 401, JSON.stringify({ ok: false }), 'application/json');
-    send(res, 200, JSON.stringify({ ok: true }), 'application/json', { 'Cache-Control': 'no-store', 'Set-Cookie': `nrf50_s=${makeToken()}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_SEC}${secure(req) ? '; Secure' : ''}` });
+    let pw = '', user = ''; try { const j = JSON.parse(body); pw = String(j.password || ''); user = String(j.user || '').trim().toLowerCase().slice(0, 40); } catch (e) { return send(res, 400, 'Bad request'); }
+    let role = null;
+    if (user && user !== 'admin') { try { role = api.checkUser(user, pw); } catch (e) { role = null; } }
+    else { const h = crypto.createHash('sha256').update('nrf50:' + pw).digest('hex'); if (ADMIN_HASH && h.length === ADMIN_HASH.length && crypto.timingSafeEqual(Buffer.from(h), Buffer.from(ADMIN_HASH))) { role = 'admin'; user = 'admin'; } }
+    if (!role) return send(res, 401, JSON.stringify({ ok: false }), 'application/json');
+    api.audit(req, 'login', { user, role });
+    send(res, 200, JSON.stringify({ ok: true, user, role }), 'application/json', { 'Cache-Control': 'no-store', 'Set-Cookie': `nrf50_s=${makeToken(user, role)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_SEC}${secure(req) ? '; Secure' : ''}` });
   });
 }
 
-http.createServer((req, res) => {
+// 원고 초안·보도자료: 연구진이 모은 근거만으로 쓰게 하고, 문단마다 근거 번호를 달게 한다
+const WRITE_SCHEMA = {
+  draft: { type: 'object', additionalProperties: false, required: ['title', 'lead', 'sections'], properties: { title: { type: 'string' }, lead: { type: 'string' },
+    sections: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['heading', 'paras'], properties: { heading: { type: 'string' }, paras: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['text', 'cites'], properties: { text: { type: 'string' }, cites: { type: 'array', items: { type: 'integer' } } } } } } } } } },
+  press: { type: 'object', additionalProperties: false, required: ['headline', 'subhead', 'paras', 'quote', 'en_title', 'en_summary'], properties: { headline: { type: 'string' }, subhead: { type: 'string' }, paras: { type: 'array', items: { type: 'string' } }, quote: { type: 'string' }, en_title: { type: 'string' }, en_summary: { type: 'string' } } },
+};
+const WRITE_SYSTEM = {
+  draft: '너는 한국연구재단 50년 대표 사례집의 원고를 쓰는 연구 보조원이다. 사용자가 준 [근거 n] 목록과 사실 목록에 있는 내용만 쓴다. 문단마다 그 문단이 기대는 근거 번호를 cites에 넣고, 근거가 없으면 그 내용을 쓰지 않는다. 수치·연도·기관명은 근거에 적힌 그대로 쓴다. 국민이 읽기 쉬운 문장으로, 지원 → 연구 → 확산 → 국민 체감의 흐름을 따른다. 3~5개 절로 구성한다.',
+  press: '너는 한국연구재단 홍보 담당자를 돕는 보조원이다. 사용자가 준 사실 목록과 근거에 있는 내용만으로 보도자료 초안과 영문 요약을 쓴다. 근거에 없는 수치나 인용은 만들지 않는다. quote는 근거에 인터뷰 발언이 있을 때만 그대로 옮기고, 없으면 빈 문자열로 둔다. 문단은 3~5개.',
+};
+function aiWrite(req, res, readBody, audit) {
+  if (!authed(req)) return send(res, 403, JSON.stringify({ ok: false, error: '관리자·연구진 로그인 후에만 쓸 수 있습니다.' }), 'application/json');
+  if (!process.env.ANTHROPIC_API_KEY) return send(res, 503, JSON.stringify({ ok: false, error: '서버에 ANTHROPIC_API_KEY가 설정되지 않았습니다.' }), 'application/json');
+  if (limited(ipOf(req), 10, 'aiw:')) return send(res, 429, JSON.stringify({ ok: false, error: 'AI 요청이 너무 많습니다. 1분 뒤 다시 하세요.' }), 'application/json');
+  readBody(req, 1024 * 1024).then(async b => {
+    const mode = b.mode === 'press' ? 'press' : 'draft', facts = [].concat(b.facts || []).map(String).slice(0, 80), src = [].concat(b.sources || []).slice(0, 80).map((s, i) => `[근거 ${i + 1}] ${String(s).slice(0, 4000)}`);
+    const text = `대상: ${String(b.title || '').slice(0, 200)}\n\n사실 목록:\n${facts.map(f => `- ${f}`).join('\n')}\n\n근거 목록:\n${src.join('\n') || '(없음)'}`;
+    if (text.length > AI_MAX_CHARS) return send(res, 413, JSON.stringify({ ok: false, error: '근거가 너무 깁니다. 근거 수를 줄여 주세요.' }), 'application/json');
+    let Anthropic; try { const m = require('@anthropic-ai/sdk'); Anthropic = m.default || m; } catch (e) { return send(res, 503, JSON.stringify({ ok: false, error: '서버에 @anthropic-ai/sdk가 없습니다.' }), 'application/json'); }
+    try {
+      const r = await new Anthropic().beta.messages.create({
+        model: process.env.AI_MODEL || 'claude-opus-5-5', max_tokens: 12000,
+        betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
+        output_config: { effort: 'medium', format: { type: 'json_schema', schema: WRITE_SCHEMA[mode] } },
+        system: WRITE_SYSTEM[mode], messages: [{ role: 'user', content: text }],
+      });
+      if (r.stop_reason === 'refusal') return send(res, 422, JSON.stringify({ ok: false, error: '모델이 처리를 거절했습니다.' }), 'application/json');
+      if (r.stop_reason === 'max_tokens') return send(res, 422, JSON.stringify({ ok: false, error: '응답이 길어 잘렸습니다. 근거를 줄여 주세요.' }), 'application/json');
+      const out = r.content.find(x => x.type === 'text'); audit(req, `ai:${mode}`, { title: String(b.title || '').slice(0, 80) });
+      send(res, 200, JSON.stringify({ ok: true, mode, data: JSON.parse(out ? out.text : '{}'), model: r.model }), 'application/json', { 'Cache-Control': 'no-store' });
+    } catch (e) {
+      const msg = e instanceof Anthropic.AuthenticationError ? 'AI 키 인증에 실패했습니다.' : e instanceof Anthropic.RateLimitError ? 'AI 요청 한도를 넘었습니다.' : e instanceof Anthropic.APIError ? `AI 요청 오류 (${e.status ?? '연결'})` : 'AI 처리 중 오류가 났습니다.';
+      send(res, 502, JSON.stringify({ ok: false, error: msg }), 'application/json');
+    }
+  }).catch(() => send(res, 400, JSON.stringify({ ok: false, error: 'Bad request' }), 'application/json'));
+}
+const api = (() => { const h = require('./api.js')({ ROOT, send, limited, ipOf, session, SECRET, aiWrite: (...a) => aiWrite(...a) }); return h; })();
+
+http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (await api(req, res, url)) return;
   if (req.method === 'POST' && url.pathname === '/auth/login') return login(req, res);
   if (req.method === 'POST' && url.pathname === '/ai/extract') return aiExtract(req, res);
   if (req.method === 'POST' && url.pathname === '/auth/logout') return send(res, 200, '{"ok":true}', 'application/json', { 'Set-Cookie': `nrf50_s=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure(req) ? '; Secure' : ''}` });
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
-  if (url.pathname === '/proxy/health') return send(res, 200, JSON.stringify({ ok: true, hosts: [...HOSTS], keys: Object.keys(KEYS), auth: authed(req), ai: !!process.env.ANTHROPIC_API_KEY }), 'application/json', { 'Cache-Control': 'no-store' });
+  if (url.pathname === '/proxy/health') return send(res, 200, JSON.stringify({ ok: true, hosts: [...HOSTS], keys: Object.keys(KEYS), auth: authed(req), role: session(req)?.r || null, ai: !!process.env.ANTHROPIC_API_KEY }), 'application/json', { 'Cache-Control': 'no-store' });
   if (url.pathname === '/proxy') return void proxy(req, res, url);
   serveFile(req, res, url);
 }).listen(PORT, () => console.log(`nrf50-platform: http://localhost:${PORT}`));

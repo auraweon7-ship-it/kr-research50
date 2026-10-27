@@ -1,12 +1,17 @@
 /* 화면 조립, 주소(딥링크), 공개용·연구용 전환, 이벤트 연결. 가장 마지막에 불러온다 */
-const SUBMAP = { outreach: [SUBS, 'sub'], admin: [ADMIN_SUBS, 'asub'], dsearch: [DS_SUBS, 'dsub'], pool: [POOL_SUBS, 'psub'] };
-const visibleViews = () => VIEWS.filter(v => (staff() || !v.staff) && (isAdmin() || !v.admin));
+const SUBMAP = { outreach: [SUBS, 'sub'], admin: [ADMIN_SUBS, 'asub'], dsearch: [DS_SUBS, 'dsub'], pool: [POOL_SUBS, 'psub'], svc: [SVC_SUBS, 'ssub'] };
+const canView = v => (staff() || !v.staff) && (isAdmin() || !v.admin || (v.roles || []).includes(state.role));
+const visibleViews = () => VIEWS.filter(v => canView(v) && (!v.hidden || v.id === state.view));
+// 관리자 전용 화면의 하위 화면은 역할별로 연다(하위 항목 4번째 값 = 열어 줄 역할)
+const subsOf = id => { const v = VIEWS.find(x => x.id === id), L = SUBMAP[id]?.[0] || []; return v?.admin && !isAdmin() ? L.filter(x => (x[3] || []).includes(state.role)) : L; };
 
 /* ---------- 주소 ↔ 상태 ----------
    #/화면[/하위화면][/후보ID]  예) #/outcomes/O-018  #/outreach/cards/R-013  #/admin/review */
 const route = () => {
   const v = state.view, sm = SUBMAP[v]; let h = `#/${v}`;
+  if (v === 'form') return `#/form/${state.formToken || ''}`;
   if (sm) h += `/${state[sm[1]]}`;
+  if (v === 'svc' && state.ssub === 'story' && state.story) return `${h}/${state.story}`;
   if (v === 'outreach' && state.sub === 'cards') { if (state.card) h += `/${state.card}`; } else if (state.open) h += `/${state.open}`;
   return h;
 };
@@ -14,9 +19,11 @@ const syncHash = push => { const h = route(); if (location.hash !== h) history[p
 const applyHash = () => {
   const p = decodeURIComponent(location.hash).replace(/^#\/?/, '').split('/').filter(Boolean), v = VIEWS.find(x => x.id === p[0]);
   if (!v) return false;
-  if ((v.staff && !staff()) || (v.admin && !isAdmin())) { state.view = 'goal'; state.open = null; return true; }
+  if (v.id === 'form') { state.view = 'form'; state.formToken = p[1] || ''; state.open = null; return true; }
+  if (!canView(v)) { state.view = 'goal'; state.open = null; return true; }
   state.view = v.id; const sm = SUBMAP[v.id], rest = p.slice(1);
-  if (sm && rest[0] && sm[0].some(s => s[0] === rest[0])) state[sm[1]] = rest.shift();
+  if (sm && rest[0] && subsOf(v.id).some(s => s[0] === rest[0])) state[sm[1]] = rest.shift();
+  if (v.id === 'svc' && state.ssub === 'story' && rest[0] && byId(rest[0])) { state.story = rest[0]; state.open = null; return true; }
   const id = rest[0]; state.open = null;
   if (id && /^[OR]-\d+$/.test(id) && byId(id)) { if (v.id === 'outreach' && state.sub === 'cards') state.card = id; else state.open = id; }
   return true;
@@ -33,6 +40,7 @@ const sideTools = () => `
 const render = () => {
   const views = visibleViews(); if (!views.some(v => v.id === state.view)) state.view = 'goal';
   const i = views.findIndex(v => v.id === state.view), v = views[i], sm = SUBMAP[v.id];
+  if (sm && !subsOf(v.id).some(x => x[0] === state[sm[1]])) state[sm[1]] = subsOf(v.id)[0]?.[0];
   if (v.kind) state.kind = v.kind;
   document.body.classList.toggle('mode-public', !staff());
   document.title = `${v.t.join(' ')} · 대한민국 연구 50년`;
@@ -40,13 +48,13 @@ const render = () => {
   $('.brand-v').textContent = `v${CONFIG.VERSION}`;
   $('.side-note').innerHTML = `<b>안내</b>${staff() ? '체계·기준·일정은 연구계획서의 제안값(안)입니다. 후보·점수·투입액 등 수치는 시연용 예시이며 실제 선정 결과가 아닙니다.' : '이 화면의 성과·연구자와 수치는 플랫폼 시연용 예시이며 실제 선정 결과가 아닙니다.'}`;
   $('#sidetools').innerHTML = sideTools();
-  $('#nav').innerHTML = views.map((q, j) => { const s = SUBMAP[q.id];
+  $('#nav').innerHTML = views.filter(q => !q.hidden).map((q, j) => { const s = SUBMAP[q.id] && [subsOf(q.id), SUBMAP[q.id][1]];
     return `<button class="nav-item ${q.id === v.id ? 'on' : ''}" data-act="nav" data-v="${q.id}" ${q.id === v.id ? 'aria-current="page"' : ''}><span class="nav-ic ${G[j % 4]}" aria-hidden="true">${String(j + 1).padStart(2, '0')}</span>${q.t.join(' ')}</button>${s ? `<div class="nav-subs">${s[0].map(([sv, sl]) => `<button class="nav-sub ${v.id === q.id && state[s[1]] === sv ? 'on' : ''}" data-act="nav" data-v="${q.id}:${sv}" ${v.id === q.id && state[s[1]] === sv ? 'aria-current="page"' : ''}>${sl}</button>`).join('')}</div>` : ''}`; }).join('');
-  const cur = sm && sm[0].find(x => x[0] === state[sm[1]]), first = sm && sm[0][0][0];
+  const cur = sm && sm[0].find(x => x[0] === state[sm[1]]), first = sm && subsOf(v.id)[0]?.[0];
   const lead = cur && cur[0] !== first ? `<b style="color:var(--ink)">${cur[1]}</b> · ${cur[2]}${v.id === 'outreach' ? (state.sub === 'cards' ? ' 확산 콘텐츠' : ' 시각화 자료 예제') : ''}` : v.sub;
-  $('#main').innerHTML = `<header class="page-head"><div><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><h1>${v.t[0]} <b>${v.t[1]}</b></h1><p>${lead}</p></div><div class="head-r"><button class="adminbtn ${isAdmin() ? 'on' : ''}" data-act="adminbtn" aria-label="${isAdmin() ? '관리자 모드 로그아웃' : '관리자 모드 로그인'}" title="${isAdmin() ? '관리자 모드 · 누르면 로그아웃' : '관리자 모드 로그인'}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="3"/><path d="${isAdmin() ? 'M8 11V7a4 4 0 0 1 7.5-2' : 'M8 11V7a4 4 0 0 1 8 0v4'}"/><circle cx="12" cy="16" r="1.3" fill="currentColor"/></svg>${isAdmin() ? '<span>관리자</span>' : ''}</button><div class="badge-no" aria-hidden="true"><span>${String(i + 1).padStart(2, '0')}</span></div></div></header>${R[v.id]()}
+  $('#main').innerHTML = `<header class="page-head"><div><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><h1>${v.t[0]} <b>${v.t[1]}</b></h1><p>${lead}</p></div><div class="head-r"><button class="adminbtn ${isAdmin() || state.role ? 'on' : ''}" data-act="adminbtn" aria-label="${isAdmin() || state.role ? '로그아웃' : '관리자 모드 로그인'}" title="${isAdmin() || state.role ? `${ROLE_NAME[state.role] || '관리자'} · ` + '누르면 로그아웃' : '관리자 모드 로그인'}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="3"/><path d="${isAdmin() ? 'M8 11V7a4 4 0 0 1 7.5-2' : 'M8 11V7a4 4 0 0 1 8 0v4'}"/><circle cx="12" cy="16" r="1.3" fill="currentColor"/></svg>${isAdmin() ? '<span>관리자</span>' : ''}</button><div class="badge-no" aria-hidden="true"><span>${v.hidden ? '·' : String(i + 1).padStart(2, '0')}</span></div></div></header>${R[v.id]()}
     <footer class="site-foot"><div class="dots sm" aria-hidden="true"><i></i><i></i><i></i></div>한국연구재단 <span>|</span> 한국외국어대학교(연구책임자: 박정원 교수)</footer>`;
-  renderGrid(); renderRank(); mountMap(); mountGraph(); mountCards(); graphKeys(); if (typeof coMount === 'function') coMount(); if (typeof infoMotion === 'function') infoMotion();
+  renderGrid(); renderRank(); mountMap(); mountGraph(); mountCards(); graphKeys(); if (typeof coMount === 'function') coMount(); if (typeof infoMotion === 'function') infoMotion(); if (typeof storyMotion === 'function') storyMotion();
   if (state.open) showModal(state.open); else $('#modal').hidden = true;
   applyLang($('.side')); applyLang($('#main'));
 };
@@ -83,9 +91,9 @@ const graphKeys = () => {
 Object.assign(ACT, {
   nav: v => {
     const [a, b] = v.split(':'), view = VIEWS.find(x => x.id === a);
-    if (view?.admin && !isAdmin()) return toast('관리자 모드에서만 볼 수 있습니다. 오른쪽 위 자물쇠로 로그인하세요.');
+    if (view?.admin && !isAdmin() && !(view.roles || []).includes(state.role)) return toast('관리자 모드에서만 볼 수 있습니다. 오른쪽 위 자물쇠로 로그인하세요.');
     if (view?.staff && !staff()) return toast('연구용 화면입니다. 왼쪽에서 연구용으로 바꾸면 볼 수 있습니다.');
-    state.view = a; const sm = SUBMAP[a]; if (sm) state[sm[1]] = b || sm[0][0][0];
+    state.view = a; const sm = SUBMAP[a]; if (sm) state[sm[1]] = (b && subsOf(a).some(x => x[0] === b)) ? b : subsOf(a)[0]?.[0];
     state.open = null; syncHash(true); render(); window.scrollTo(0, 0); $('#main').focus({ preventScroll: true });
   },
   // 검색 결과 등에서 쓰는 이동: 화면[/하위][/ID][@구역]
@@ -101,19 +109,30 @@ Object.assign(ACT, {
     state.mode = v; LS.set('nrf50.mode', v); state.open = null; syncHash(false); render(); toast(v === 'staff' ? '연구용 화면입니다. 발굴 기준·점수·관리 도구가 보입니다.' : '공개용 화면입니다. 최종선정된 성과·연구자만 보입니다.');
   },
   adminbtn: () => {
-    if (isAdmin()) { state.admin = false; try { sessionStorage.removeItem('nrf50.admin'); } catch (e) { /* 저장 불가 환경 */ } fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {}); if (state.ds?.srv) state.ds.srv.auth = false; if (state.view === 'admin') state.view = 'goal'; syncHash(false); render(); return toast('관리자 모드에서 나왔습니다.'); }
-    const d = $('#login'); d.hidden = false; $('#loginmsg').textContent = ''; const i = $('#loginpw'); i.value = ''; i.focus();
+    if (isAdmin() || state.role) { state.admin = false; state.role = null; if (typeof srvStore === 'object') srvStore.role = null; try { sessionStorage.removeItem('nrf50.admin'); sessionStorage.removeItem('nrf50.role'); } catch (e) { /* 저장 불가 환경 */ } fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {}); if (state.ds?.srv) state.ds.srv.auth = false; if (state.view === 'admin') state.view = 'goal'; syncHash(false); render(); return toast('관리자 모드에서 나왔습니다.'); }
+    const d = $('#login'); d.hidden = false; $('#loginmsg').textContent = ''; const i = $('#loginpw'); i.value = ''; ($('#loginid')?.value ? i : $('#loginid') || i).focus();
   },
   adminclose: () => { $('#login').hidden = true; $('.adminbtn')?.focus(); },
   adminlogin: async () => {
-    const pw = $('#loginpw').value, msg = $('#loginmsg');
+    const pw = $('#loginpw').value, msg = $('#loginmsg'), uid = ($('#loginid')?.value || '').trim().toLowerCase();
+    const setRole = r => { state.role = r; state.admin = ['admin', 'researcher'].includes(r); if (typeof srvStore === 'object') srvStore.role = r; try { sessionStorage.setItem('nrf50.role', r); sessionStorage.setItem('nrf50.admin', state.admin ? '1' : '0'); } catch (e) { /* 저장 불가 환경 */ } };
+    if (uid && uid !== 'admin') {
+      let j = null; try { const r = await fetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ user: uid, password: pw }) }); j = r.ok ? await r.json() : null; } catch (e) { return void (msg.textContent = '서버에 연결하지 못했습니다. 계정 로그인은 npm start 서버에서만 됩니다.'); }
+      if (!j?.ok) { msg.textContent = '아이디 또는 암호가 맞지 않습니다.'; $('#loginpw').select(); return; }
+      setRole(j.role); if (typeof dsProxy === 'function' && state.admin) await dsProxy(true);
+      if (await remote.pull()) applyImported();
+      state.mode = 'staff'; LS.set('nrf50.mode', 'staff'); $('#login').hidden = true;
+      if (!state.admin) { state.view = 'admin'; state.asub = subsOf('admin')[0]?.[0]; }
+      render(); return toast(`${ROLE_NAME[j.role]}(${uid})으로 로그인했습니다.`);
+    }
     if (!crypto.subtle) return void (msg.textContent = '이 주소에서는 로그인을 확인할 수 없습니다 (https 또는 localhost 필요).');
     const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('nrf50:' + pw)))].map(b => b.toString(16).padStart(2, '0')).join('');
     if (h !== CONFIG.ADMIN_HASH) { msg.textContent = '암호가 맞지 않습니다.'; $('#loginpw').select(); return; }
-    state.admin = true; try { sessionStorage.setItem('nrf50.admin', '1'); } catch (e) { /* 저장 불가 환경 */ }
+    setRole('admin');
     // 서버가 있으면 서버 세션도 맺는다(서버 공용 API 키 사용). 정적 호스팅이면 조용히 넘어간다
     try { await fetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ password: pw }) }); } catch (e) { /* 서버 없음 */ }
     if (typeof dsProxy === 'function') await dsProxy(true);
+    if (await remote.pull()) applyImported();
     state.mode = 'staff'; LS.set('nrf50.mode', 'staff'); $('#login').hidden = true; render(); toast('관리자 모드입니다. 연구 관리와 데이터 검색 메뉴가 열렸습니다.');
   },
   lang: () => { state.lang = state.lang === 'ko' ? 'en' : 'ko'; LS.set('nrf50.lang', state.lang); render(); },
@@ -228,6 +247,9 @@ new MutationObserver(ms => { if (state.lang !== 'en') return; for (const m of ms
 
 /* ---------- 시작 ---------- */
 applyImported();
+if (typeof applyScoreOv === 'function') applyScoreOv();
 applyHash();
 render(); syncHash(false);
-if (remote.on) { const tick = async () => { if (await remote.pull()) { applyImported(); render(); } else { const el = $('#storestat'); if (el) el.textContent = storeLabel(); } }; tick(); setInterval(tick, 45000); }
+remote.ready.then(on => { if (!on) return;
+  // 서버 세션이 끝났는데 이 탭은 로그인 상태로 기억하고 있으면 풀어 준다(서버 재시작·만료)
+  if (remote.kind === 'server' && state.role && !srvStore.role) { state.role = null; state.admin = false; try { sessionStorage.removeItem('nrf50.role'); sessionStorage.removeItem('nrf50.admin'); } catch (e) { /* 저장 불가 */ } render(); toast('로그인 세션이 끝났습니다. 다시 로그인하세요.'); } const tick = async () => { if (await remote.pull()) { applyImported(); if (typeof applyScoreOv === 'function') applyScoreOv(); render(); } else { const el = $('#storestat'); if (el) el.textContent = storeLabel(); } }; tick(); setInterval(tick, 45000); });

@@ -271,16 +271,17 @@ const cnt = v => `<span data-to="${v}">${v}</span>`;
 const mo = (i, step = .08) => `data-mo style="--d:${(i * step).toFixed(2)}s"`;
 
 // 50년 시간축: 시대 띠 위에 영향경로 4단계를 선이 그려지며 잇는다
-const infoAxis = it => {
-  const W = 860, L = 24, Rr = 24, y0 = 1977, y1 = 2027, X = y => L + (y - y0) / (y1 - y0) * (W - L - Rr), col = dom(it.domain).color, P = it.path;
+const infoAxis = it => axisSvg(it.path.map((p, i) => ({ year: p.year, label: PATH_STAGES[i] })), dom(it.domain).color, `${it.path[0].year}년부터 ${it.path[3].year}년까지 영향경로 시간축`);
+const axisSvg = (P, col, aria) => {
+  const W = 860, L = 24, Rr = 24, y0 = 1977, y1 = 2027, X = y => L + (y - y0) / (y1 - y0) * (W - L - Rr);
   const bands = ERAS.map((e, i) => `<rect x="${X(e.from)}" y="20" width="${X(Math.min(e.to + 1, y1)) - X(e.from)}" height="70" fill="${GC_HEX[i % 4]}" opacity=".08"/><text x="${X(e.from) + 6}" y="34" class="ia-era">${e.no} ${e.label}</text>`).join('');
   const ticks = [1980, 1990, 2000, 2010, 2020].map(y => `<text x="${X(y)}" y="106" text-anchor="middle" class="ia-t">${y}</text>`).join('');
   const d = `M${X(P[0].year)},62 ${P.slice(1).map(p => `L${X(p.year)},62`).join(' ')} L${X(2026)},62`;
-  return `<svg viewBox="0 0 ${W} 112" class="ia" role="img" aria-label="${P[0].year}년부터 ${P[3].year}년까지 영향경로 시간축">${bands}${ticks}
+  return `<svg viewBox="0 0 ${W} 112" class="ia" role="img" aria-label="${aria}">${bands}${ticks}
     <line x1="${L}" x2="${W - Rr}" y1="62" y2="62" stroke="#DDE2EA" stroke-width="4" stroke-linecap="round"/>
     <path d="${d}" fill="none" stroke="${col}" stroke-width="6" stroke-linecap="round" pathLength="1" class="mo-draw"/>
-    ${P.map((p, i) => `<g class="ia-dot" style="--d:${(.5 + i * .35).toFixed(2)}s"><circle cx="${X(p.year)}" cy="62" r="11" fill="#fff" stroke="${col}" stroke-width="4"/><circle cx="${X(p.year)}" cy="62" r="4.5" fill="${col}"/>
-      <text x="${X(p.year)}" y="${i % 2 ? 90 : 46}" text-anchor="middle" class="ia-l">${p.year} ${PATH_STAGES[i]}</text></g>`).join('')}
+    ${P.map((p, i) => `<g class="ia-dot" style="--d:${(.5 + i * .35).toFixed(2)}s"><circle cx="${X(p.year)}" cy="62" r="${p.star ? 13 : 11}" fill="#fff" stroke="${p.star ? '#F6A53A' : col}" stroke-width="4"/><circle cx="${X(p.year)}" cy="62" r="4.5" fill="${p.star ? '#F6A53A' : col}"/>
+      <text x="${X(p.year)}" y="${i % 2 ? 90 : 46}" text-anchor="middle" class="ia-l">${p.year} ${p.label}${p.star ? ' ★' : ''}</text></g>`).join('')}
     <g class="ia-now" style="--d:1.9s"><circle cx="${X(2026)}" cy="62" r="7" fill="${col}" class="ia-pulse"/><text x="${X(2026)}" y="46" text-anchor="end" class="ia-l">2026 현재</text></g></svg>`;
 };
 const GC_HEX = ['#3D9FE6', '#EC5C8D', '#F6A53A', '#27B894'];
@@ -325,7 +326,7 @@ const infoPoster = it => {
       <div class="p-two">
         <div ${mo(0)}><h4>영역 안에서의 위치 · ${d.short} ${peers.length}건 중 성과 점수 ${drank}위</h4>
           <div class="p-dist"><div class="p-dline">${peers.map(o => `<i style="left:${px(score(o))}%" ${o.id === it.id ? 'class="me"' : ''}></i>`).join('')}<b style="left:${px(score(it))}%;background:${d.color};transform:translateX(-${px(score(it)) > 85 ? 100 : px(score(it)) < 15 ? 0 : 50}%)">${score(it)}점</b></div><div class="p-dax"><span>${lo}점</span><span>영역 평균 ${r1(avg(score))}점</span><span>${hi}점</span></div></div>
-          <p class="p-note">전체 ${OUTCOMES.length}건 중 투자 대비 성과 지수 ${rank}위 · 상위 ${Math.max(1, Math.round(rank / OUTCOMES.length * 100))}%</p></div>
+          <p class="p-note">전체 ${OUTCOMES.length}건 중 투자 대비 성과 지수 ${rank}위${rank <= OUTCOMES.length / 2 ? ` · 상위 ${Math.max(1, Math.round(rank / OUTCOMES.length * 100))}%` : ""}</p></div>
         <div ${mo(1)}><h4>사람으로 이어진 파급 · 연계 연구자 ${people.length}명</h4>
           ${people.length ? `<div class="p-gaps four">${[[sum('alumni'), '명', '배출 인력'], [sum('coauthors'), '명', '공동연구자'], [sum('papers'), '편', '논문·저서'], [sum('patents'), '건', '특허·기술이전']].map(([n, u, l], i) => `<div ${mo(i + 2)}><b>${cnt(n)}<small>${u}</small></b><span>${l}</span></div>`).join('')}</div>
             <p class="p-note">연계 대표 연구자 이력 합계. 한 성과가 사람을 키우고, 그 사람이 다음 연구를 잇는 구조를 보여 줍니다.</p>` : '<p class="p-note">연계 연구자 확인 중</p>'}</div>
@@ -366,20 +367,21 @@ const infoMotion = () => { const el = document.querySelector('#infostage'); if (
 let infoCss = null;
 const infoHtml = async it => {
   infoCss ||= await (await fetch(`assets/style.css?v=${CONFIG.VERSION}`)).text();
+  const poster = it.kind === 'p' ? pinfoPoster(it) : infoPoster(it), kindName = it.kind === 'p' ? '대표 연구자' : '대표성과';
   return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${it.id} ${esc(it.title)} · 대표성과 인포그래픽</title>
+<title>${it.id} ${esc(it.kind === 'p' ? `${it.field} 연구자` : it.title)} · ${kindName} 인포그래픽</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <style>${infoCss}
 body{display:block;padding:28px 16px 40px;margin:0}.info-export{max-width:1180px;margin:0 auto}.info-export .bar-top{display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px}
 .info-export button{font:inherit;font-size:12.5px;font-weight:600;padding:8px 16px;border-radius:999px;border:0;background:#fff;color:#27365A;box-shadow:0 3px 10px rgba(39,54,90,.12);cursor:pointer}
 @media print{.info-export .bar-top{display:none}body{padding:0}}</style></head>
 <body><main class="info-export"><div class="bar-top"><button onclick="infoPlay(document,true)">모션 다시 재생</button><button onclick="print()">인쇄</button></div>
-${infoPoster(it)}
+${poster}
 <p style="text-align:center;color:#5D6980;font-size:11px;margin-top:14px">대한민국 연구 50년 · ${new Date().toISOString().slice(0, 10)} 내보냄 · 수치는 시연용 예시 데이터</p></main>
 <script>const infoPlay = ${infoPlay.toString()};infoPlay(document);</script></body></html>`;
 };
-const infoFile = it => `대표성과_${it.id}_${it.title.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '-')}.html`;
+const infoFile = it => `${it.kind === 'p' ? '대표연구자' : '대표성과'}_${it.id}_${(it.kind === 'p' ? `${it.field}-연구자` : it.title).replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '-')}.html`;
 
 OUT.info = () => {
   const pk = picker('info', 'o'), it = byId(state.pick.info);
@@ -398,11 +400,12 @@ Object.assign(ACT, {
   infohtml: async (v, t) => {
     if (t.dataset.busy) return; t.dataset.busy = '1'; const label = t.textContent;
     try {
-      if (v === 'one') { const it = byId(state.pick.info); download(infoFile(it), new Blob([await infoHtml(it)], { type: 'text/html' })); }
+      const k = t.dataset.k || 'o', key = k === 'p' ? 'pinfo' : 'info';
+      if (v === 'one') { const it = byId(state.pick[key]); download(infoFile(it), new Blob([await infoHtml(it)], { type: 'text/html' })); }
       else {
-        const items = [...LIST.o].sort((a, b) => stageOf(b) - stageOf(a) || score(b) - score(a)).slice(0, 50), enc8 = new TextEncoder(), files = [];
+        const items = [...LIST[k]].sort((a, b) => stageOf(b) - stageOf(a) || score(b) - score(a)).slice(0, 50), enc8 = new TextEncoder(), files = [];
         for (let i = 0; i < items.length; i++) { files.push({ name: `${String(i + 1).padStart(2, '0')}_${infoFile(items[i])}`, data: enc8.encode(await infoHtml(items[i])) }); t.textContent = `만드는 중 ${i + 1}/${items.length}`; if (i % 10 === 9) await new Promise(r => setTimeout(r)); }
-        download('대표성과_인포그래픽_50선_HTML.zip', zipStore(files));
+        download(k === 'p' ? '대표연구자_인포그래픽_50인_HTML.zip' : '대표성과_인포그래픽_50선_HTML.zip', zipStore(files));
       }
       t.textContent = '내려받기 완료';
     } catch (e) { t.textContent = '만들기 실패'; console.error(e); }
