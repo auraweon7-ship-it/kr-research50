@@ -194,51 +194,101 @@ const loadMaps = () => gm.p ||= new Promise((res, rej) => {
   s.src = `https://maps.googleapis.com/maps/api/js?key=${CONFIG.GOOGLE_MAPS_API_KEY}&callback=__gmReady&v=weekly&language=ko&region=KR&loading=async`;
   s.onerror = rej; document.head.appendChild(s);
 });
-const openPop = (o, marker) => {
+const openPop = o => {
   gm.un?.(); gm.un = null;
   const box = document.createElement('div'); box.className = 'gpop';
-  box.innerHTML = `<div class="gpop-stage">${popFallback(o)}</div><div class="gpop-path">${o.path.map((p, i) => `<span class="${p.year <= state.mapf.year ? 'on' : ''}" style="--c:${STAGE_COL[i]}"><b>${p.year}</b>${PATH_STAGES[i]}</span>`).join('')}</div><div class="gpop-foot"><span class="mute sm">${dom(o.domain).label} · ${O_GUIDE[o.guide]}</span><button class="btn" data-act="open" data-v="${o.id}">성과 상세</button></div>`;
-  gm.info.setContent(box); gm.info.open({ map: gm.map, anchor: marker });
+  box.innerHTML = `<div class="gpop-stage">${popFallback(o)}</div><div class="gpop-path">${o.path.map((p, i) => `<span class="${p.year <= state.mapf.year ? 'on' : ''}" style="--c:${STAGE_COL[i]};--d:${(.15 + i * .12).toFixed(2)}s"><b>${p.year}</b>${PATH_STAGES[i]}</span>`).join('')}</div><div class="gpop-foot"><span class="mute sm">${dom(o.domain).label} · ${O_GUIDE[o.guide]}</span><button class="btn" data-act="open" data-v="${o.id}">성과 상세</button></div>`;
+  const p = geoOf(o); gm.info.setContent(box); gm.info.setPosition(p); gm.info.setOptions({ pixelOffset: new google.maps.Size(0, -14) }); gm.info.open({ map: gm.map });
+  gm.fx?.focus(o.id);
   import(`../popup-remotion.js?v=${CONFIG.VERSION}`).then(m => { const st = document.createElement('div'); gm.un = m.mount(st, popData(o)); box.firstChild.replaceChildren(st); }).catch(() => { /* CDN 차단 시 CSS 카드 유지 */ });
 };
-// 표지는 한 번만 만들고, 필터·연도가 바뀌면 보이기와 색·크기만 바꾼다(재생이 부드럽게)
-const markIcon = o => { const sel = stageOf(o) === 3, st = Math.max(0, stageAt(o, state.mapf.year)); return { path: google.maps.SymbolPath.CIRCLE, scale: 5 + st * 1.4 + (sel ? 2 : 0), fillColor: markCol(o), fillOpacity: .92, strokeColor: '#fff', strokeWeight: sel ? 3 : 2 }; };
-const drawMarkers = (quiet) => {
-  const list = mapList(), on = new Set(list.map(o => o.id));
-  if (!quiet) gm.info.close();
-  for (const o of OUTCOMES) {
-    let m = gm.byId.get(o.id);
-    if (!on.has(o.id)) { if (m) m.setMap(null); continue; }
-    if (!m) { m = new google.maps.Marker({ position: geoOf(o), title: o.title, animation: quiet ? null : google.maps.Animation.DROP }); m.oid = o.id; m.addListener('click', () => openPop(o, m)); gm.byId.set(o.id, m); }
-    m.setIcon(markIcon(o)); m.setZIndex(stageOf(o) === 3 ? 3 : 1 + Math.max(0, stageAt(o, state.mapf.year)) / 10); if (!m.getMap()) m.setMap(gm.map);
+const mapFocus = id => { const o = byId(id); if (!o || !gm.map) return openModal(id); gm.map.panTo(geoOf(o)); openPop(o); };
+
+/* ---------- 모션 표지 층: Google 지도 위에 HTML 점을 얹어 CSS 모션(등장·성장·파동·폭발)을 준다 ---------- */
+const makeFx = () => class FxLayer extends google.maps.OverlayView {
+  constructor() { super(); this.nodes = new Map(); this.waves = new Map(); this.st = new Map(); }
+  onAdd() {
+    this.div = document.createElement('div'); this.div.className = 'fxlayer';
+    this.getPanes().overlayMouseTarget.appendChild(this.div);
+    this.div.addEventListener('click', e => { const n = e.target.closest('.fxm'); if (n) { e.stopPropagation(); openPop(byId(n.dataset.id)); } });
+    if (this.pending) { const [l, o] = this.pending; this.pending = null; this.update(l, o); }
   }
-  gm.marks = list.map(o => gm.byId.get(o.id));
-  (gm.rings || []).forEach(c => c.setMap(null));
-  gm.rings = state.mapf.rings ? REGIONS.map((r, i) => { const n = list.filter(o => o.region === r.id).length, [lat, lng] = GEO[r.id]; if (!n) return null;
-    return new google.maps.Circle({ map: gm.map, center: { lat, lng }, radius: 12000 + Math.sqrt(n) * 9500, strokeColor: GC[i % 4], strokeOpacity: r.id === state.region ? .9 : .35, strokeWeight: r.id === state.region ? 3 : 1, fillColor: GC[i % 4], fillOpacity: r.id === state.region ? .14 : .06, clickable: false }); }).filter(Boolean) : [];
+  onRemove() { this.div?.remove(); this.nodes.clear(); this.waves.clear(); }
+  draw() {
+    const pj = this.getProjection(); if (!pj) return;
+    for (const [id, n] of this.nodes) { const p = pj.fromLatLngToDivPixel(new google.maps.LatLng(n._ll)); n.style.transform = `translate(${p.x}px,${p.y}px)`; }
+    for (const [, w] of this.waves) { const p = pj.fromLatLngToDivPixel(new google.maps.LatLng(w._ll)); w.style.transform = `translate(${p.x}px,${p.y}px)`; }
+  }
+  // list: 보일 성과. intro면 첫 지원 연도 순으로 차례로 떠오르고, 재생 중 단계가 오르면 터지는 파동을 낸다
+  update(list, { intro = false, quiet = false } = {}) {
+    if (!this.div) { this.pending = [list, { intro, quiet }]; return; }
+    const on = new Set(list.map(o => o.id)), y = state.mapf.year, order = intro ? [...list].sort((a, b) => a.path[0].year - b.path[0].year).map(o => o.id) : null;
+    for (const [id, n] of this.nodes) if (!on.has(id) && !n.classList.contains('out')) { n.classList.add('out'); setTimeout(() => { if (n.classList.contains('out')) { n.remove(); this.nodes.delete(id); } }, 380); }
+    list.forEach((o, i) => {
+      let n = this.nodes.get(o.id); const st = Math.max(0, stageAt(o, y)), prev = this.st.get(o.id);
+      if (!n || n.classList.contains('out')) {
+        n?.remove(); n = document.createElement('div'); n.className = 'fxm in'; n.dataset.id = o.id; n._ll = geoOf(o);
+        n.innerHTML = `<i class="fxh"></i><i class="fxc"></i><span class="fxt">${esc(o.title)}</span>`;
+        n.style.setProperty('--d', `${intro ? Math.min(2.4, order.indexOf(o.id) * .04) : quiet ? 0 : Math.min(.6, i * .012)}s`);
+        this.div.appendChild(n); this.nodes.set(o.id, n); setTimeout(() => n.classList.remove('in'), 2600);
+      }
+      n.style.setProperty('--c', markCol(o)); n.className = `fxm s${st}${stageOf(o) === 3 ? ' sel' : ''}${n.classList.contains('in') ? ' in' : ''}${o.region === state.region ? ' reg' : ''}`;
+      // 재생 중 단계가 올라가면 한 번 터진다
+      if (quiet && prev != null && st > prev) { const b = document.createElement('i'); b.className = `fxb b${st}`; n.appendChild(b); setTimeout(() => b.remove(), 1300); }
+      this.st.set(o.id, st);
+    });
+    // 권역 파동: 성과가 많을수록 크고 빠르게 퍼진다
+    const reg = REGIONS.map((r, i) => ({ r, i, n: list.filter(o => o.region === r.id).length }));
+    for (const { r, i, n } of reg) {
+      let w = this.waves.get(r.id);
+      if (!state.mapf.rings || !n) { if (w) { w.remove(); this.waves.delete(r.id); } continue; }
+      if (!w) { w = document.createElement('div'); w.className = 'fxw'; w._ll = { lat: GEO[r.id][0], lng: GEO[r.id][1] }; w.innerHTML = '<i></i><i></i><i></i><b></b>'; this.div.prepend(w); this.waves.set(r.id, w); }
+      const sz = 60 + Math.sqrt(n) * 34; w.style.setProperty('--s', `${sz}px`); w.style.setProperty('--c', GC[i % 4]); w.style.setProperty('--t', `${Math.max(2.2, 5 - n * .12)}s`);
+      w.classList.toggle('reg', r.id === state.region); w.querySelector('b').textContent = `${r.id} ${n}`;
+    }
+    this.draw();
+  }
+  focus(id) { for (const [k, n] of this.nodes) n.classList.toggle('foc', k === id); }
+};
+const drawMarkers = (quiet, intro) => {
+  const list = mapList();
+  if (!quiet) gm.info.close();
+  gm.marks = list.map(o => ({ oid: o.id }));
+  gm.fx.update(list, { quiet, intro });
   if (!quiet && gm.region !== state.region) { gm.region = state.region; const [lat, lng] = GEO[state.region]; gm.map.panTo({ lat, lng }); gm.map.setZoom(state.region === '제주권' ? 10 : 8); }
 };
 const mountMap = () => {
   const ph = $('#gmap'); if (!ph) { mapStop(); return; }
   if (gm.el && gm.el !== ph) ph.replaceWith(gm.el); else gm.el = ph;
   if (gm.fail) return mapFallback();
-  if (gm.map) return drawMarkers();
+  if (gm.map) { drawMarkers(); mapCountUp(); return; }
   loadMaps().then(() => {
     if (gm.fail || gm.map) return;
-    gm.map = new google.maps.Map(gm.el, { center: { lat: 36.1, lng: 127.8 }, zoom: 7, mapTypeControl: false, streetViewControl: false, fullscreenControl: true, styles: MAP_STYLE, gestureHandling: 'cooperative' });
+    // 첫 화면: 조금 멀리서 시작해 한반도로 다가가며 성과가 첫 지원 연도 순으로 떠오른다
+    gm.map = new google.maps.Map(gm.el, { center: { lat: 36.3, lng: 127.8 }, zoom: 6, mapTypeControl: false, streetViewControl: false, fullscreenControl: true, styles: MAP_STYLE, gestureHandling: 'cooperative' });
     gm.info = new google.maps.InfoWindow({ maxWidth: 460 });
-    gm.info.addListener('closeclick', () => { gm.un?.(); gm.un = null; });
-    gm.region = state.region; drawMarkers();
+    gm.info.addListener('closeclick', () => { gm.un?.(); gm.un = null; gm.fx?.focus(null); });
+    const Fx = makeFx(); gm.fx = new Fx(); gm.fx.setMap(gm.map);
+    gm.region = state.region;
+    const zoomIn = () => { if (gm.map.getZoom() < 7) gm.map.setZoom(7); };
+    google.maps.event.addListenerOnce(gm.map, 'tilesloaded', () => setTimeout(zoomIn, 250)); setTimeout(zoomIn, 1500);
+    setTimeout(() => drawMarkers(false, true), 60); mapCountUp();
   }).catch(() => { gm.fail = true; mapFallback('지도 스크립트를 불러오지 못했습니다'); });
+};
+// 권역 요약 숫자는 그려질 때 0부터 올라간다
+const mapCountUp = () => {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('.regionpane .rkpi b[data-to]').forEach(b => { const to = +b.dataset.to, u = b.querySelector('small')?.outerHTML || '', t0 = performance.now(); const f = now => { const k = Math.min(1, (now - t0) / 900); b.innerHTML = `${Math.round(to * (1 - Math.pow(1 - k, 3)))}${u}`; if (k < 1) requestAnimationFrame(f); }; requestAnimationFrame(f); });
 };
 
 /* ---------- 50년 확산 재생: 연도를 옮기며 첫 지원 → 활용으로 자라는 표지 ---------- */
 const mapTick = () => {
   const y = state.mapf.year, base = mapBase(), list = mapList(), use = base.filter(o => stageAt(o, y) === 3).length;
-  const el = $('#mtime'); if (el) { el.querySelector('b').textContent = `${y}년`; el.querySelector('.mt-n').textContent = `지원 시작 ${list.length}건 · 산업·사회 활용 도달 ${use}건`; const r = el.querySelector('input'); if (+r.value !== y) r.value = y; el.querySelector('.mt-era').textContent = (ERAS.find(e => y >= e.from && y <= e.to) || ERAS.at(-1)).label; }
-  if (gm.map) drawMarkers(true); else if (gm.el && gm.fail) mapFallback();
+  const el = $('#mtime'); if (el) { el.querySelector('b').textContent = `${y}년`; el.querySelector('.mt-n').textContent = `지원 시작 ${list.length}건 · 산업·사회 활용 도달 ${use}건`; const r = el.querySelector('input'); if (+r.value !== y) r.value = y; el.querySelector('.mt-era').textContent = (ERAS.find(e => y >= e.from && y <= e.to) || ERAS.at(-1)).label; const pr = el.querySelector('.mt-prog i'); if (pr) pr.style.width = `${(y - 1977) / 49 * 100}%`; }
+  const fy = $('#fxyear'); if (fy) { fy.querySelector('b').textContent = y; fy.querySelector('span').textContent = `활용 ${use} · 진행 ${list.length - use}`; fy.classList.remove('tick'); void fy.offsetWidth; fy.classList.add('tick'); }
+  if (gm.map && gm.fx) drawMarkers(true); else if (gm.el && gm.fail) mapFallback();
 };
-const mapStop = () => { clearInterval(gm.play); gm.play = null; const b = $('#mplay'); if (b) b.textContent = '▶ 50년 재생'; };
+const mapStop = () => { clearInterval(gm.play); gm.play = null; const b = $('#mplay'); if (b) b.textContent = '▶ 50년 재생'; $('.mapwrap')?.classList.remove('playing'); };
 document.addEventListener('input', e => { if (e.target.id === 'myear') { mapStop(); state.mapf.year = +e.target.value; mapTick(); } });
 
 const spreadPoster = (list, reg) => {
@@ -264,7 +314,7 @@ const regionSpark = items => {
   const ys = []; for (let y = 1980; y <= 2026; y += 2) ys.push([y, items.filter(o => o.path[3].year <= y).length]);
   const mx = Math.max(1, ...ys.map(x => x[1])), W = 300, H = 56, X = i => 4 + i / (ys.length - 1) * (W - 8), Y = v => H - 6 - v / mx * (H - 14);
   const d = ys.map(([, v], i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' '), cur = ys.findIndex(([y]) => y >= state.mapf.year);
-  return `<svg viewBox="0 0 ${W} ${H}" class="rspark" role="img" aria-label="권역 활용 도달 누적 추이"><path d="${d} L${X(ys.length - 1)},${H - 6} L${X(0)},${H - 6} Z" fill="var(--teal)" opacity=".14"/><path d="${d}" fill="none" stroke="var(--teal)" stroke-width="2.4"/>${cur >= 0 ? `<line x1="${X(cur)}" x2="${X(cur)}" y1="4" y2="${H - 6}" stroke="#27365A" stroke-dasharray="3 3"/>` : ''}<text x="4" y="${H - 0}" class="ia-t">1980</text><text x="${W - 4}" y="${H}" text-anchor="end" class="ia-t">2026</text></svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" class="rspark" role="img" aria-label="권역 활용 도달 누적 추이"><path class="rs-area" d="${d} L${X(ys.length - 1)},${H - 6} L${X(0)},${H - 6} Z" fill="var(--teal)" opacity=".14"/><path class="rs-line" pathLength="1" d="${d}" fill="none" stroke="var(--teal)" stroke-width="2.4"/>${cur >= 0 ? `<line x1="${X(cur)}" x2="${X(cur)}" y1="4" y2="${H - 6}" stroke="#27365A" stroke-dasharray="3 3"/>` : ''}<text x="4" y="${H - 0}" class="ia-t">1980</text><text x="${W - 4}" y="${H}" text-anchor="end" class="ia-t">2026</text></svg>`;
 };
 
 OUT.map = () => {
@@ -286,10 +336,11 @@ OUT.map = () => {
       <div>
         <div class="mapwrap">
           <div id="gmap"></div>
+          <div class="fxyear" id="fxyear" aria-hidden="true"><b>${F.year}</b><span>활용 ${base.filter(o => stageAt(o, F.year) === 3).length} · 진행 ${list.length - base.filter(o => stageAt(o, F.year) === 3).length}</span></div>
           <div class="mapctl"><span>색 기준</span>${[['domain', '지원 영역'], ['guide', '생활 분야'], ['stage', '확산 단계']].map(([v, l]) => `<button class="chip ${F.color === v ? 'on' : ''}" data-act="mcolor" data-v="${v}">${l}</button>`).join('')}
             <button class="chip ${F.rings ? 'on' : ''}" data-act="mrings">권역 원</button><button class="chip" data-act="mfit">전국 보기</button></div>
           <div class="mtime" id="mtime"><button class="btn pri" id="mplay" data-act="mplay">${gm.play ? '❚❚ 멈춤' : '▶ 50년 재생'}</button><b>${F.year}년</b><span class="mt-era">${(ERAS.find(e => F.year >= e.from && F.year <= e.to) || ERAS.at(-1)).label}</span>
-            <input type="range" id="myear" min="1977" max="2026" value="${F.year}" aria-label="기준 연도"><span class="mt-n">지원 시작 ${list.length}건 · 산업·사회 활용 도달 ${base.filter(o => stageAt(o, F.year) === 3).length}건</span></div>
+            <span class="mt-track"><input type="range" id="myear" min="1977" max="2026" value="${F.year}" aria-label="기준 연도"><span class="mt-prog"><i style="width:${(F.year - 1977) / 49 * 100}%"></i></span><span class="mt-eras">${ERAS.map((e, i) => `<em style="left:${(e.from - 1977) / 49 * 100}%;--c:${GC[i % 4]}">${e.no}</em>`).join('')}</span></span><span class="mt-n">지원 시작 ${list.length}건 · 산업·사회 활용 도달 ${base.filter(o => stageAt(o, F.year) === 3).length}건</span></div>
         </div>
         ${legend(mapLegend())}
         <p class="mute sm mt">표지를 누르면 모션그래픽 팝업과 확산 단계가 열립니다. 표지 크기는 기준 연도까지 도달한 확산 단계(클수록 활용에 가까움), 흰 테두리가 굵은 표지는 최종선정 성과입니다. "50년 재생"은 1977년부터 해마다 첫 지원을 받은 성과가 나타나고 단계가 자라는 과정을 보여 줍니다. 표지 위치는 권역 안에 흩어 놓은 예시이며 실제 소재지가 아닙니다.</p>
@@ -297,7 +348,7 @@ OUT.map = () => {
       <div class="regionpane">
         <div class="chips">${reg.map((r, i) => `<button class="chip ${r.id === cur.id ? 'on' : ''}" data-act="region" data-v="${r.id}"><i style="background:${GC[i % 4]}"></i>${r.id} ${r.items.length}</button>`).join('')}</div>
         <h3 class="mt" style="font-size:16px"><b>${cur.id}</b> 확산 성과</h3>
-        <div class="rkpi">${[[cur.items.length, '건', '성과'], [cur.items.filter(o => stageOf(o) === 3).length, '건', '최종선정'], [span, '년', '평균 확산'], [use, '건', `${F.year}년 활용 도달`]].map(([v, u, l]) => `<div><b>${v}<small>${u}</small></b><span>${l}</span></div>`).join('')}</div>
+        <div class="rkpi">${[[cur.items.length, '건', '성과'], [cur.items.filter(o => stageOf(o) === 3).length, '건', '최종선정'], [span, '년', '평균 확산'], [use, '건', `${F.year}년 활용 도달`]].map(([v, u, l], i) => `<div style="--d:${(i * .07).toFixed(2)}s"><b data-to="${v}">${v}<small>${u}</small></b><span>${l}</span></div>`).join('')}</div>
         <h4 class="h4 mt">활용 도달 누적 추이</h4>${regionSpark(cur.items)}
         <ol class="rank rlist">${[...cur.items].sort((a, b) => stageOf(b) - stageOf(a) || score(b) - score(a)).map((o, i) => { const st = stageAt(o, F.year); return `<li data-act="focus" data-v="${o.id}"><b>${i + 1}</b><span>${esc(o.title)}<em class="rstages">${o.path.map((p, k) => `<i class="${k <= st ? 'on' : ''}" style="--c:${STAGE_COL[k]}" title="${p.year} ${PATH_STAGES[k]}"></i>`).join('')}<small>${o.path[0].year}→${o.path[3].year}</small></em></span><b>${score(o)}</b></li>`; }).join('') || '<li style="cursor:default"><b></b><span class="mute">조건에 맞는 성과 없음</span><b></b></li>'}</ol>
         <div class="chips mt"><button class="btn" data-act="mcsv">이 조건 CSV</button></div>
@@ -322,7 +373,7 @@ Object.assign(ACT, {
   mplay: () => {
     if (gm.play) return mapStop();
     if (state.mapf.year >= 2026) state.mapf.year = 1977;
-    $('#mplay').textContent = '❚❚ 멈춤'; mapTick();
+    $('#mplay').textContent = '❚❚ 멈춤'; $('.mapwrap')?.classList.add('playing'); mapTick();
     gm.play = setInterval(() => { if (!$('#mtime')) return mapStop(); state.mapf.year++; mapTick(); if (state.mapf.year >= 2026) { mapStop(); render(); } }, 420);
   },
   mcsv: () => {

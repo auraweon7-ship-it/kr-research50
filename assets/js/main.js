@@ -187,7 +187,7 @@ Object.assign(ACT, {
   gplay: () => { if (!gx.playing && gx.vy >= 2026) { gx.V = []; gx.vy = null; gSetYear(1977, true); } gx.playing = !gx.playing; gx.auto = true; gBtn(); },
   gfull: () => { const w = $('.graph-wrap'); document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen?.(); },
   gpng: () => gx.cv.toBlob(b => download('research-network.png', b)),
-  focus: v => { const m = (gm.marks || []).find(x => x.oid === v); if (m) { gm.map.panTo(m.getPosition()); google.maps.event.trigger(m, 'click'); } else openModal(v); },
+  focus: v => mapFocus(v),
   jump: v => document.getElementById(v)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }),
   era: v => { state.era = v; render(); },
   kind: v => { state.kind = v; state.cmp = []; state.imp = null; render(); },

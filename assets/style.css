@@ -535,3 +535,47 @@ pre.code{background:#27365A;color:#E9ECF1;border-radius:14px;padding:14px 16px;f
 .p-otbl table{width:100%;border-collapse:collapse;font-size:12px}.p-otbl th{font-size:11px;color:var(--mute);text-align:left;font-weight:700;padding:6px 6px;border-bottom:1px solid #E3E7EE}.p-otbl td{padding:6px;border-bottom:1px solid #F0F2F6;vertical-align:top}.p-otbl td:first-child{white-space:nowrap;color:var(--mute)}
 .infostat{font-size:12px;color:var(--mute);margin:0 0 12px;padding:8px 14px;border-radius:12px;box-shadow:var(--in-s)}.infostat.on{background:#E6F6F1;box-shadow:none;color:#1F6F58}
 @media (max-width:1180px){.p-gaps.six{grid-template-columns:repeat(3,1fr)}}
+/* 확산 지도 모션 (v1.7) */
+.fxlayer{position:absolute;left:0;top:0}
+.fxm{position:absolute;left:0;top:0;width:0;height:0;cursor:pointer;z-index:2}
+.fxm .fxc{position:absolute;left:0;top:0;width:var(--z,12px);height:var(--z,12px);margin:calc(var(--z,12px)/-2) 0 0 calc(var(--z,12px)/-2);border-radius:50%;background:var(--c);border:2px solid #fff;box-shadow:0 2px 8px rgba(39,54,90,.35);transition:width .55s cubic-bezier(.3,1.6,.5,1),height .55s cubic-bezier(.3,1.6,.5,1),margin .55s cubic-bezier(.3,1.6,.5,1),background .4s}
+.fxm .fxh{position:absolute;left:0;top:0;width:calc(var(--z,12px) * 2.4);height:calc(var(--z,12px) * 2.4);margin:calc(var(--z,12px) * -1.2) 0 0 calc(var(--z,12px) * -1.2);border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--c) 45%,transparent) 0%,transparent 70%);opacity:.0;transition:opacity .4s}
+.fxm.s0{--z:10px}.fxm.s1{--z:13px}.fxm.s2{--z:16px}.fxm.s3{--z:20px}.fxm.s3 .fxh{opacity:.9;animation:fxGlow 2.6s ease-in-out infinite}
+.fxm.sel .fxc{border-width:3px;box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 35%,transparent),0 3px 10px rgba(39,54,90,.35)}
+.fxm.sel::after{content:"";position:absolute;left:0;top:0;width:calc(var(--z) + 10px);height:calc(var(--z) + 10px);margin:calc((var(--z) + 10px)/-2) 0 0 calc((var(--z) + 10px)/-2);border-radius:50%;border:2px solid var(--c);animation:fxRing 2.2s ease-out infinite;pointer-events:none}
+.fxm.in .fxc{animation:fxPop .7s cubic-bezier(.3,1.7,.5,1) var(--d,0s) both}.fxm.in .fxh{animation:fxFade .9s ease var(--d,0s) both}
+.fxm.out{pointer-events:none}.fxm.out .fxc,.fxm.out .fxh{animation:fxOut .36s ease forwards}
+.fxm:hover{z-index:5}.fxm:hover .fxc,.fxm.foc .fxc{transform:scale(1.35)}.fxm .fxc{transition-property:width,height,margin,background,transform}
+.fxm.foc{z-index:6}.fxm.foc::before{content:"";position:absolute;left:0;top:0;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;border:2px dashed var(--c);animation:fxSpin 6s linear infinite}
+.fxt{position:absolute;left:14px;top:-10px;white-space:nowrap;font-size:11.5px;font-weight:700;color:#27365A;background:rgba(255,255,255,.95);padding:3px 9px;border-radius:999px;box-shadow:0 4px 12px rgba(39,54,90,.18);opacity:0;transform:translateX(-6px);transition:.2s;pointer-events:none}
+.fxm:hover .fxt{opacity:1;transform:none}
+.fxb{position:absolute;left:0;top:0;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:3px solid var(--c);animation:fxBurst 1.2s cubic-bezier(.2,.7,.2,1) forwards;pointer-events:none}.fxb.b3{border-width:4px;animation-duration:1.4s}
+.fxw{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:1}
+.fxw i{position:absolute;left:0;top:0;width:var(--s);height:var(--s);margin:calc(var(--s)/-2) 0 0 calc(var(--s)/-2);border-radius:50%;border:1.5px solid var(--c);background:color-mix(in srgb,var(--c) 10%,transparent);opacity:0;animation:fxWave var(--t,3.6s) ease-out infinite}
+.fxw i:nth-child(2){animation-delay:calc(var(--t,3.6s) / 3)}.fxw i:nth-child(3){animation-delay:calc(var(--t,3.6s) / 1.5)}
+.fxw.reg i{border-width:2.5px}.fxw b{position:absolute;left:0;top:calc(var(--s)/2 + 4px);transform:translateX(-50%);white-space:nowrap;font-size:11px;font-weight:700;color:#fff;background:var(--c);padding:2px 9px;border-radius:999px;opacity:.85;box-shadow:0 3px 8px rgba(39,54,90,.2)}
+.fxw.reg b{opacity:1;font-size:12px}
+@keyframes fxPop{0%{transform:scale(0) translateY(-30px);opacity:0}60%{opacity:1}100%{transform:none;opacity:1}}
+@keyframes fxFade{from{opacity:0}}@keyframes fxOut{to{transform:scale(0);opacity:0}}
+@keyframes fxGlow{50%{transform:scale(1.25);opacity:.45}}@keyframes fxRing{0%{transform:scale(.9);opacity:.9}100%{transform:scale(2.2);opacity:0}}
+@keyframes fxBurst{0%{transform:scale(.6);opacity:1}100%{transform:scale(5.5);opacity:0;border-width:1px}}
+@keyframes fxWave{0%{transform:scale(.35);opacity:0}15%{opacity:.85}100%{transform:scale(1.6);opacity:0}}@keyframes fxSpin{to{transform:rotate(360deg)}}
+/* 연도 표시판 */
+.fxyear{position:absolute;top:12px;right:62px;z-index:2;text-align:right;pointer-events:none;padding:6px 14px;border-radius:16px;background:rgba(255,255,255,.82);backdrop-filter:blur(6px);box-shadow:0 6px 18px rgba(39,54,90,.14)}
+.fxyear b{display:block;font-size:30px;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:#27365A}.fxyear span{font-size:11px;color:var(--mute)}
+.fxyear.tick b{animation:fxTick .42s cubic-bezier(.3,1.6,.5,1)}@keyframes fxTick{0%{transform:translateY(8px);opacity:.3}100%{transform:none;opacity:1}}
+.mapwrap.playing .fxyear{background:rgba(39,54,90,.88)}.mapwrap.playing .fxyear b{color:#fff}.mapwrap.playing .fxyear span{color:#C5CCD9}
+/* 재생 막대 */
+.mt-track{position:relative;flex:1 1 220px;display:block;padding-bottom:16px}.mt-track input{width:100%;position:relative;z-index:1;accent-color:#27B894}
+.mt-prog{position:absolute;left:0;right:0;top:50%;height:4px;margin-top:-10px;border-radius:2px;background:#E3E7EE;overflow:hidden;pointer-events:none}.mt-prog i{display:block;height:100%;background:linear-gradient(90deg,#3D9FE6,#8A7CF0,#F6A53A,#27B894);transition:width .4s linear}
+.mt-eras{position:absolute;left:0;right:0;bottom:0;height:14px}.mt-eras em{position:absolute;font-style:normal;font-size:10px;font-weight:700;color:var(--c);transform:translateX(-2px)}
+.mapwrap.playing #mplay{animation:fxBtn 1.6s ease-in-out infinite}@keyframes fxBtn{50%{box-shadow:0 0 0 6px rgba(39,184,148,.25)}}
+/* 권역 패널 모션 */
+.rkpi div{animation:mpIn .55s cubic-bezier(.2,.7,.2,1) var(--d,0s) both}
+.rlist li{animation:mpIn .5s ease both}.rlist li:nth-child(2){animation-delay:.04s}.rlist li:nth-child(3){animation-delay:.08s}.rlist li:nth-child(4){animation-delay:.12s}.rlist li:nth-child(5){animation-delay:.16s}.rlist li:nth-child(n+6){animation-delay:.2s}
+.rspark .rs-line{stroke-dasharray:1;stroke-dashoffset:1;animation:fxDraw 1.4s cubic-bezier(.4,.1,.2,1) .15s forwards}.rspark .rs-area{animation:fxFade 1.2s ease .5s both}@keyframes fxDraw{to{stroke-dashoffset:0}}
+.gpop-path span{animation:mpIn .45s ease var(--d,0s) both}
+/* 약식 도해 모션 */
+.mbub{animation:fxBub .7s cubic-bezier(.3,1.7,.5,1) both}@keyframes fxBub{0%{scale:0;opacity:0}100%{scale:1;opacity:1}}.mbub i{animation:fxOrbit 18s linear infinite}.mbub:nth-child(2n) i{animation-direction:reverse}
+@keyframes fxOrbit{from{rotate:0deg}to{rotate:360deg}}
+@media (prefers-reduced-motion:reduce){.fxm *,.fxm::after,.fxm::before,.fxw i,.fxyear b,.rkpi div,.rlist li,.rspark path,.gpop-path span,.mbub,.mbub i,#mplay{animation:none!important}.rspark .rs-line{stroke-dashoffset:0}.fxw i{opacity:.4;transform:scale(1)}}
