@@ -1,6 +1,6 @@
 {
   "name": "nrf50-platform",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "private": true,
   "description": "대한민국 연구 50년: 정적 화면과 학술 API 중계 서버",
   "scripts": {

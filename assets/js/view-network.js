@@ -161,6 +161,7 @@ const gDraw = now => {
     const la = gx.labels === 'off' ? (n.id === gx.hover || n.id === gx.sel ? 1 : 0) : gx.labels === 'all' ? (on ? 1 : .15) : hl ? (on ? 1 : 0) : hit ? 1 : Math.max(n.deg >= 7 ? .8 : 0, Math.min(1, (k - 1.05) / .5));
     if (la > .02 && grow > .6) { const s = gLabel(n.it); c.globalAlpha = la; c.fillStyle = TH.label; c.fillText(s.length > 16 ? s.slice(0, 15) + '…' : s, n.sx, n.sy + r + gx.lsize + 2); }
   }
+  gPopFollow(c);
   if (gx.playing || gx.vy < 2026) { c.globalAlpha = .2; c.fillStyle = TH.water; c.textAlign = 'left'; c.font = '700 54px Pretendard, sans-serif'; c.fillText(gx.vy, 22, 64); }
   c.globalAlpha = 1;
 };
@@ -234,7 +235,7 @@ const mountGraph = () => {
     if (!drag) return; if (drag.n) drag.n.fixed = false;
     if (drag.moved < 5) {
       if (gx.pathMode && drag.n && gx.sel && drag.n.id !== gx.sel) { gx.path = gPath(gx.sel, drag.n.id); gx.pathMode = false; if (!gx.path) gx.sel = drag.n.id; }
-      else { gx.sel = drag.n ? drag.n.id : null; gx.path = null; gx.pathMode = false; gWave(gx.sel); if (gx.ego) { gx.auto = false; gx.cam = gFitTarget(); } }
+      else { gx.sel = drag.n ? drag.n.id : null; gx.path = null; gx.pathMode = false; gWave(gx.sel); if (gx.ego) { gx.auto = false; gx.cam = gFitTarget(); } if (gx.sel) gPopOpen(gx.sel); else gPopClose(); }
       gHl(); gPanel();
     }
     drag = null;
@@ -247,6 +248,7 @@ const mountGraph = () => {
     gx.tf.x = mx - (mx - gx.tf.x) * k / k0; gx.tf.y = my - (my - gx.tf.y) * k / k0; gx.tf.k = k;
   };
   gPanel(); gBtn(); gDraw(performance.now());
+  if (gx.pop) { const id = gx.pop; gx.popUn?.(); gx.popUn = null; if (gx.N.some(n => n.id === id)) gPopOpen(id); else gx.pop = null; }
   if (!gx.run) { gx.run = true; gx.last = 0; requestAnimationFrame(gLoop); }
 };
 
@@ -284,9 +286,9 @@ R.network = () => {
     <span style="width:10px"></span><span class="mute sm" style="align-self:center">크기</span>${[['deg', '연결 수'], ['score', '성과 점수'], ['roi', '투자 대비 성과 지수']].map(([v, l]) => tg(gx.size === v, 'gsizem', v, l)).join('')}</div>
   <div class="row gcols">
     <section class="slide" style="padding:14px">
-      <div class="graph-wrap ${gx.theme}" style="--gh:${gx.h}px"><canvas id="graph" aria-label="대표 성과와 대표 연구자의 연구 네트워크 그래프"></canvas>
+      <div class="graph-wrap ${gx.theme}" style="--gh:${gx.h}px"><canvas id="graph" aria-label="대표 성과와 대표 연구자의 연구 네트워크 그래프"></canvas><div class="gpop2" id="gpop2" hidden></div>
         <div class="gzoom"><button data-act="gzoom" data-v="1.25" aria-label="확대">＋</button><button data-act="gzoom" data-v="0.8" aria-label="축소">－</button><button data-act="gfit" aria-label="화면 맞춤">⤢</button></div>
-        <div class="graph-hint">끌기: 이동 · 휠: 확대 · 노드 끌기: 재배치 · 클릭: 선택 · 더블클릭: 상세</div>
+        <div class="graph-hint">끌기: 이동 · 휠: 확대 · 노드 끌기: 재배치 · 클릭: 모션 팝업 · 더블클릭: 상세 · Esc: 팝업 닫기</div>
         <div class="graph-time"><button class="btn" id="gplay" data-act="gplay">▶ 50년 성장 재생</button><input type="range" min="1977" max="2026" value="${Math.floor(gx.year)}" data-gyear aria-label="연도"><b id="gyear">${Math.floor(gx.year)}</b><span id="gcount"></span></div></div>
       <div style="padding:4px 10px 6px">${legend(leg)}</div>
     </section>
@@ -311,7 +313,7 @@ const gTourStop = () => { if (!gx.tour) return; clearInterval(gx.tour); gx.tour 
 const gTourStep = () => {
   const hubs = [...gx.V].sort((a, b) => (gx.vadj[b.id]?.size || 0) - (gx.vadj[a.id]?.size || 0)).slice(0, 10); if (!hubs.length) return gTourStop();
   gx.ti = ((gx.ti ?? -1) + 1) % hubs.length; const n = hubs[gx.ti], k = Math.max(1.35, gx.tf.k);
-  gx.sel = n.id; gx.path = null; gx.auto = false; gx.cam = { k, x: -n.x * k, y: -n.y * k }; gWave(n.id); gHl(); gPanel(); applyLang($('#gpanel'));
+  gx.sel = n.id; gx.path = null; gx.auto = false; gx.cam = { k, x: -n.x * k, y: -n.y * k }; gWave(n.id); gHl(); gPanel(); applyLang($('#gpanel')); gPopOpen(n.id);
 };
 const gApplySize = () => { const w = $('.graph-wrap'); if (w) w.style.setProperty('--gh', `${gx.h}px`); LS.set('nrf50.gh', gx.h); LS.set('nrf50.gns', gx.nscale); LS.set('nrf50.gls', gx.lsize); };
 document.addEventListener('input', e => {
@@ -328,3 +330,39 @@ Object.assign(ACT, {
   gzoom: v => { gTourStop(); gx.auto = false; const k0 = gx.tf.k, k = Math.max(.35, Math.min(4, k0 * +v)); gx.cam = { k, x: gx.tf.x * k / k0, y: gx.tf.y * k / k0 }; },
   gtour: () => { if (gx.tour) return gTourStop(); gTourStep(); gx.tour = setInterval(() => { if (!gx.cv?.isConnected) return gTourStop(); gTourStep(); }, 4200); const b = $('[data-act="gtour"]'); if (b) { b.textContent = '❚❚ 투어 멈춤'; b.classList.add('pri'); } },
 });
+
+/* ---------- 노드 모션 팝업: 누른 노드 곁에 Remotion 카드가 떠서 노드를 따라다닌다 ---------- */
+const gPopData = it => it.kind === 'o' ? popData(it) : {
+  id: it.id, title: `${it.field} 연구자`, region: dom(it.domain).short, color: dom(it.domain).color, feel: FEEL[it.guide], y0: it.y0, span: it.years, invest: it.grants, roi: +roi(it).toFixed(1),
+  nums: [[it.y0, '년', '첫 지원', false], [it.years, '년', '누적 지원', true], [it.grants, '건', '지원 과제', true], [it.alumni, '명', '배출 인력', true]],
+  ctype: P_GUIDE[it.guide], grade: GRADES[it.grade].label, stages: it.life.map(p => ({ year: p.year, label: p.stage })), mix: null,
+};
+const gPopStill = it => { const d = gPopData(it), N = d.nums || [[d.y0, '년', '첫 지원'], [d.span, '년', '확산 기간'], [d.invest, '억', '실질 투입'], [d.roi, '', '성과 지수']]; return `<div class="mpop" style="background:linear-gradient(135deg,${d.color},#27365A)"><small>대한민국 연구 50년 · ${d.id} · ${esc(d.region)}</small><h3>${esc(d.title)}</h3><p>${esc(d.feel)}</p><div class="mp-n">${N.map(([n, u, l], i) => `<div style="animation-delay:${.3 + i * .12}s"><b>${n}<i>${u}</i></b><span>${l}</span></div>`).join('')}</div><div class="mp-b"><span>${esc(d.ctype)} · ${esc(d.grade)}</span></div></div>`; };
+const gPopClose = () => { gx.popUn?.(); gx.popUn = null; gx.pop = null; const el = $('#gpop2'); if (el) { el.hidden = true; el.innerHTML = ''; } };
+const gPopOpen = id => {
+  const el = $('#gpop2'), it = byId(id); if (!el || !it) return;
+  gx.popUn?.(); gx.popUn = null; gx.pop = id; gx.popT = performance.now();
+  const deg = gx.vadj[id]?.size || 0;
+  el.innerHTML = `<button class="gp-x" data-act="gpopx" aria-label="팝업 닫기">✕</button><div class="gp-stage">${gPopStill(it)}</div>
+    <div class="gp-foot"><span class="mute sm">${it.kind === 'o' ? '대표 성과' : '대표 연구자'} · 연결 ${deg}</span><div class="chips" style="gap:4px"><button class="btn" data-act="gegoon" data-v="${id}">이웃만</button><button class="btn" data-act="gpathfrom" data-v="${id}">경로</button><button class="btn pri" data-act="open" data-v="${id}">상세</button></div></div>`;
+  el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  import(`../popup-remotion.js?v=${CONFIG.VERSION}`).then(m => { if (gx.pop !== id) return; const st = document.createElement('div'); gx.popUn = m.mount(st, gPopData(it)); el.querySelector('.gp-stage')?.replaceChildren(st); }).catch(() => { /* CDN 차단 시 정지 카드 */ });
+};
+// 팝업은 노드 오른쪽(자리가 없으면 왼쪽)에 붙고, 노드까지 빛나는 연결선을 그린다
+const gPopFollow = c => {
+  const el = $('#gpop2'); if (!el || el.hidden || !gx.pop) return;
+  const n = gx.V.find(x => x.id === gx.pop); if (!n) return gPopClose();
+  const W = gx.cv.clientWidth, H = gx.cv.clientHeight, pw = el.offsetWidth, ph = el.offsetHeight, right = n.sx + 26 + pw < W - 8;
+  const x = right ? n.sx + 26 : Math.max(8, n.sx - 26 - pw), y = Math.max(8, Math.min(H - ph - 70, n.sy - ph / 2));
+  el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.transformOrigin = right ? 'left center' : 'right center';
+  const ex = right ? x : x + pw, ey = Math.max(y + 16, Math.min(y + ph - 16, n.sy)), u = Math.min(1, (performance.now() - gx.popT) / 400);
+  c.globalAlpha = .85 * u; c.strokeStyle = n.col; c.lineWidth = 2; c.setLineDash([4, 4]); c.lineDashOffset = -performance.now() / 40;
+  c.beginPath(); c.moveTo(n.sx, n.sy); c.lineTo(n.sx + (ex - n.sx) * u, n.sy + (ey - n.sy) * u); c.stroke(); c.setLineDash([]);
+  c.globalAlpha = u; c.fillStyle = n.col; c.beginPath(); c.arc(ex, ey, 4, 0, 7); c.fill();
+};
+Object.assign(ACT, {
+  gpopx: () => { gPopClose(); gx.sel = null; gHl(); gPanel(); },
+  gegoon: v => { gx.sel = v; gx.ego = true; gHl(); gPanel(); document.querySelector('[data-act="gopt"][data-v="ego"]')?.classList.add('on'); gx.auto = false; gx.cam = gFitTarget(); },
+  gpathfrom: v => { gx.sel = v; gx.pathMode = true; gPopClose(); gHl(); gPanel(); toast('그래프에서 도착 노드를 누르세요.'); },
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && gx.pop && $('#modal').hidden) gPopClose(); });

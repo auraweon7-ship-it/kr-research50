@@ -166,7 +166,7 @@ const MAP_STYLE = [
   { featureType: 'landscape.natural.terrain', stylers: [{ visibility: 'off' }] }, { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#D3E6F7' }] }, { featureType: 'water', elementType: 'labels', stylers: [{ visibility: 'off' }] },
 ];
 // 지도 필터: 지원 영역·생활 분야·시대·검색어, 색 기준, 기준 연도(시간 재생)
-state.mapf = { domain: '', guide: '', era: '', q: '', color: 'domain', year: 2026, rings: true };
+state.mapf = { domain: '', guide: '', era: '', q: '', color: 'domain', year: 2026, rings: true, flows: true };
 const stageAt = (o, y) => { let s = -1; o.path.forEach((p, i) => { if (p.year <= y) s = i; }); return s; };
 const mapBase = () => { const F = state.mapf, q = F.q.trim().toLowerCase(); return (state.scope === 'sel' ? selected('o') : OUTCOMES).filter(o => (!F.domain || o.domain === F.domain) && (!F.guide || o.guide === F.guide) && (!F.era || o.era === F.era) && (!q || `${o.title} ${o.id}`.toLowerCase().includes(q))); };
 const mapList = () => mapBase().filter(o => stageAt(o, state.mapf.year) >= 0);
@@ -199,7 +199,7 @@ const openPop = o => {
   const box = document.createElement('div'); box.className = 'gpop';
   box.innerHTML = `<div class="gpop-stage">${popFallback(o)}</div><div class="gpop-path">${o.path.map((p, i) => `<span class="${p.year <= state.mapf.year ? 'on' : ''}" style="--c:${STAGE_COL[i]};--d:${(.15 + i * .12).toFixed(2)}s"><b>${p.year}</b>${PATH_STAGES[i]}</span>`).join('')}</div><div class="gpop-foot"><span class="mute sm">${dom(o.domain).label} · ${O_GUIDE[o.guide]}</span><button class="btn" data-act="open" data-v="${o.id}">성과 상세</button></div>`;
   const p = geoOf(o); gm.info.setContent(box); gm.info.setPosition(p); gm.info.setOptions({ pixelOffset: new google.maps.Size(0, -14) }); gm.info.open({ map: gm.map });
-  gm.fx?.focus(o.id);
+  gm.fx?.focus(o.id); gm.focusId = o.id; gm.focusT = performance.now();
   import(`../popup-remotion.js?v=${CONFIG.VERSION}`).then(m => { const st = document.createElement('div'); gm.un = m.mount(st, popData(o)); box.firstChild.replaceChildren(st); }).catch(() => { /* CDN 차단 시 CSS 카드 유지 */ });
 };
 const mapFocus = id => { const o = byId(id); if (!o || !gm.map) return openModal(id); gm.map.panTo(geoOf(o)); openPop(o); };
@@ -252,7 +252,7 @@ const makeFx = () => class FxLayer extends google.maps.OverlayView {
 };
 const drawMarkers = (quiet, intro) => {
   const list = mapList();
-  if (!quiet) gm.info.close();
+  if (!quiet) { gm.info.close(); gm.focusId = null; gm.fx.focus(null); }
   gm.marks = list.map(o => ({ oid: o.id }));
   gm.fx.update(list, { quiet, intro });
   if (!quiet && gm.region !== state.region) { gm.region = state.region; const [lat, lng] = GEO[state.region]; gm.map.panTo({ lat, lng }); gm.map.setZoom(state.region === '제주권' ? 10 : 8); }
@@ -261,18 +261,18 @@ const mountMap = () => {
   const ph = $('#gmap'); if (!ph) { mapStop(); return; }
   if (gm.el && gm.el !== ph) ph.replaceWith(gm.el); else gm.el = ph;
   if (gm.fail) return mapFallback();
-  if (gm.map) { drawMarkers(); mapCountUp(); return; }
+  if (gm.map) { drawMarkers(); mapCountUp(); flowStart(); return; }
   loadMaps().then(() => {
     if (gm.fail || gm.map) return;
     // 첫 화면: 조금 멀리서 시작해 한반도로 다가가며 성과가 첫 지원 연도 순으로 떠오른다
     gm.map = new google.maps.Map(gm.el, { center: { lat: 36.3, lng: 127.8 }, zoom: 6, mapTypeControl: false, streetViewControl: false, fullscreenControl: true, styles: MAP_STYLE, gestureHandling: 'cooperative' });
     gm.info = new google.maps.InfoWindow({ maxWidth: 460 });
-    gm.info.addListener('closeclick', () => { gm.un?.(); gm.un = null; gm.fx?.focus(null); });
+    gm.info.addListener('closeclick', () => { gm.un?.(); gm.un = null; gm.fx?.focus(null); gm.focusId = null; });
     const Fx = makeFx(); gm.fx = new Fx(); gm.fx.setMap(gm.map);
     gm.region = state.region;
     const zoomIn = () => { if (gm.map.getZoom() < 7) gm.map.setZoom(7); };
     google.maps.event.addListenerOnce(gm.map, 'tilesloaded', () => setTimeout(zoomIn, 250)); setTimeout(zoomIn, 1500);
-    setTimeout(() => drawMarkers(false, true), 60); mapCountUp();
+    setTimeout(() => drawMarkers(false, true), 60); mapCountUp(); flowStart();
   }).catch(() => { gm.fail = true; mapFallback('지도 스크립트를 불러오지 못했습니다'); });
 };
 // 권역 요약 숫자는 그려질 때 0부터 올라간다
@@ -290,6 +290,60 @@ const mapTick = () => {
 };
 const mapStop = () => { clearInterval(gm.play); gm.play = null; const b = $('#mplay'); if (b) b.textContent = '▶ 50년 재생'; $('.mapwrap')?.classList.remove('playing'); };
 document.addEventListener('input', e => { if (e.target.id === 'myear') { mapStop(); state.mapf.year = +e.target.value; mapTick(); } });
+
+/* ---------- 지식 흐름층: 관련 성과끼리 휘어진 흐름선과 입자, 선택하면 이어진 성과로 파동이 번진다 ---------- */
+// 계보(앞선 성과 → 뒤 성과)와 같은 연구자를 공유하는 성과 쌍
+const mapLinks = () => gm.links ||= (() => {
+  const L = [], seen = new Set(), add = (a, b, type) => { const k = [a, b].sort().join('|'); if (a === b || seen.has(k)) return; seen.add(k); L.push({ a, b, type, ph: (L.length * .618) % 1 }); };
+  graphLinks().filter(l => l.type === 'gen').forEach(l => add(l.s, l.t, 'gen'));
+  OUTCOMES.forEach((o, i) => OUTCOMES.slice(i + 1).forEach(q => { if (o.people.some(p => q.people.includes(p))) add(o.id, q.id, 'share'); }));
+  return L;
+})();
+const FLOW_COL = { gen: '#F6A53A', share: '#3D9FE6' };
+const flowStart = () => {
+  const cv = $('#fxcanvas'); if (!cv || !gm.fx) return;
+  gm.fcv = cv; gm.fctx = cv.getContext('2d');
+  const size = () => { const d = window.devicePixelRatio || 1; cv.width = cv.clientWidth * d; cv.height = cv.clientHeight * d; gm.fdpr = d; };
+  size(); if (!cv._ro) { cv._ro = new ResizeObserver(size); cv._ro.observe(cv); }
+  if (!gm.frun) { gm.frun = true; requestAnimationFrame(flowLoop); }
+};
+const flowLoop = now => {
+  const cv = gm.fcv, c = gm.fctx;
+  if (!cv?.isConnected || !gm.fx) { gm.frun = false; return; }
+  const pj = gm.fx.getProjection(), w = cv.clientWidth, h = cv.clientHeight, t = now / 1000;
+  c.setTransform(gm.fdpr, 0, 0, gm.fdpr, 0, 0); c.clearRect(0, 0, w, h);
+  if (pj && state.mapf.flows) {
+    const live = new Set([...gm.fx.nodes].filter(([, n]) => !n.classList.contains('out')).map(([id]) => id)), P = {}, at = id => P[id] ||= (() => { const p = pj.fromLatLngToContainerPixel(new google.maps.LatLng(geoOf(byId(id)))); return [p.x, p.y]; })();
+    const foc = gm.focusId, ft = gm.focusT ? (now - gm.focusT) / 1000 : 9, near = new Set();
+    for (const l of mapLinks()) {
+      if (!live.has(l.a) || !live.has(l.b)) continue;
+      const A = at(l.a), B = at(l.b), dx = B[0] - A[0], dy = B[1] - A[1], len = Math.hypot(dx, dy); if (len < 6) continue;
+      const hot = foc && (l.a === foc || l.b === foc); if (hot) near.add(l.a === foc ? l.b : l.a);
+      // 거리에 비례해 위로 솟는 호: 멀리 갈수록 높게
+      const C = [(A[0] + B[0]) / 2 - dy * .12, (A[1] + B[1]) / 2 + dx * .12 - Math.min(70, len * .18)], col = FLOW_COL[l.type];
+      const grow = hot ? Math.min(1, ft / .6) : 1;
+      c.globalAlpha = foc ? (hot ? .9 : .05) : .2; c.strokeStyle = col; c.lineWidth = hot ? 2.6 : 1.3;
+      c.beginPath(); c.moveTo(A[0], A[1]);
+      if (grow < 1) { const steps = 24; for (let i = 1; i <= steps * grow; i++) { const u = i / steps; c.lineTo((1 - u) * (1 - u) * A[0] + 2 * (1 - u) * u * C[0] + u * u * B[0], (1 - u) * (1 - u) * A[1] + 2 * (1 - u) * u * C[1] + u * u * B[1]); } }
+      else c.quadraticCurveTo(C[0], C[1], B[0], B[1]);
+      c.stroke();
+      if (REDUCE || (foc && !hot)) continue;
+      const k = hot ? 3 : 1;
+      for (let i = 0; i < k; i++) {
+        const u = (t * (hot ? .45 : .14) + l.ph + i / k) % 1, x = (1 - u) * (1 - u) * A[0] + 2 * (1 - u) * u * C[0] + u * u * B[0], y = (1 - u) * (1 - u) * A[1] + 2 * (1 - u) * u * C[1] + u * u * B[1];
+        c.globalAlpha = Math.sin(u * Math.PI) * (hot ? 1 : .8); c.fillStyle = hot ? '#fff' : col;
+        c.beginPath(); c.arc(x, y, hot ? 3.2 : 2, 0, 7); c.fill();
+        if (hot) { c.globalAlpha *= .35; c.beginPath(); c.arc(x, y, 8, 0, 7); c.fill(); }
+      }
+    }
+    // 선택한 성과에서 이어진 성과로 번지는 파동
+    if (foc && live.has(foc) && !REDUCE) {
+      const F = at(foc); for (let i = 0; i < 2; i++) { const u = ((ft * .7) + i / 2) % 1; c.globalAlpha = (1 - u) * .7; c.strokeStyle = markCol(byId(foc)); c.lineWidth = 2.5; c.beginPath(); c.arc(F[0], F[1], 14 + u * 60, 0, 7); c.stroke(); }
+      for (const id of near) { const N = at(id), u = (ft - .55) / 1.1; if (u > 0 && u < 1) { c.globalAlpha = (1 - u) * .9; c.strokeStyle = '#fff'; c.lineWidth = 2.2; c.beginPath(); c.arc(N[0], N[1], 10 + u * 30, 0, 7); c.stroke(); } }
+    }
+  }
+  requestAnimationFrame(flowLoop);
+};
 
 const spreadPoster = (list, reg) => {
   const n = list.length || 1, span = Math.round(list.reduce((a, o) => a + o.path[3].year - o.path[0].year, 0) / n), top = [...reg].sort((a, b) => b.items.length - a.items.length), mx = Math.max(1, top[0].items.length);
@@ -336,9 +390,10 @@ OUT.map = () => {
       <div>
         <div class="mapwrap">
           <div id="gmap"></div>
+          <canvas id="fxcanvas" aria-hidden="true"></canvas>
           <div class="fxyear" id="fxyear" aria-hidden="true"><b>${F.year}</b><span>활용 ${base.filter(o => stageAt(o, F.year) === 3).length} · 진행 ${list.length - base.filter(o => stageAt(o, F.year) === 3).length}</span></div>
           <div class="mapctl"><span>색 기준</span>${[['domain', '지원 영역'], ['guide', '생활 분야'], ['stage', '확산 단계']].map(([v, l]) => `<button class="chip ${F.color === v ? 'on' : ''}" data-act="mcolor" data-v="${v}">${l}</button>`).join('')}
-            <button class="chip ${F.rings ? 'on' : ''}" data-act="mrings">권역 원</button><button class="chip" data-act="mfit">전국 보기</button></div>
+            <button class="chip ${F.rings ? 'on' : ''}" data-act="mrings">권역 파동</button><button class="chip ${F.flows ? 'on' : ''}" data-act="mflows">지식 흐름선</button><button class="chip" data-act="mfit">전국 보기</button></div>
           <div class="mtime" id="mtime"><button class="btn pri" id="mplay" data-act="mplay">${gm.play ? '❚❚ 멈춤' : '▶ 50년 재생'}</button><b>${F.year}년</b><span class="mt-era">${(ERAS.find(e => F.year >= e.from && F.year <= e.to) || ERAS.at(-1)).label}</span>
             <span class="mt-track"><input type="range" id="myear" min="1977" max="2026" value="${F.year}" aria-label="기준 연도"><span class="mt-prog"><i style="width:${(F.year - 1977) / 49 * 100}%"></i></span><span class="mt-eras">${ERAS.map((e, i) => `<em style="left:${(e.from - 1977) / 49 * 100}%;--c:${GC[i % 4]}">${e.no}</em>`).join('')}</span></span><span class="mt-n">지원 시작 ${list.length}건 · 산업·사회 활용 도달 ${base.filter(o => stageAt(o, F.year) === 3).length}건</span></div>
         </div>
@@ -369,6 +424,7 @@ Object.assign(ACT, {
   mq: v => { state.mapf.q = String(v).slice(0, 60); render(); },
   mcolor: v => { state.mapf.color = v; render(); },
   mrings: () => { state.mapf.rings = !state.mapf.rings; render(); },
+  mflows: (v, t) => { state.mapf.flows = !state.mapf.flows; t.classList.toggle('on', state.mapf.flows); },
   mfit: () => { if (gm.map) { gm.info.close(); gm.map.panTo({ lat: 36.1, lng: 127.8 }); gm.map.setZoom(7); gm.region = state.region; } },
   mplay: () => {
     if (gm.play) return mapStop();

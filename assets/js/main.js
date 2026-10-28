@@ -178,7 +178,7 @@ Object.assign(ACT, {
   gscope: v => { gx.scope = v; render(); },
   gcolor: v => { gx.color = v; render(); },
   gsizem: v => { gx.size = v; render(); },
-  gsel: v => { gTourStop(); gx.sel = v || null; gx.path = null; gx.pathMode = false; gWave(gx.sel); const n = gx.V.find(x => x.id === v); if (n) { const k = Math.max(gx.tf.k, 1.25); gx.auto = false; gx.cam = { k, x: -n.x * k, y: -n.y * k }; } gHl(); gPanel(); applyLang($('#gpanel')); },
+  gsel: v => { gTourStop(); gx.sel = v || null; gx.path = null; gx.pathMode = false; gWave(gx.sel); if (gx.sel) gPopOpen(gx.sel); else gPopClose(); const n = gx.V.find(x => x.id === v); if (n) { const k = Math.max(gx.tf.k, 1.25); gx.auto = false; gx.cam = { k, x: -n.x * k, y: -n.y * k }; } gHl(); gPanel(); applyLang($('#gpanel')); },
   gdepth: v => { gx.depth = +v; gHl(); gPanel(); },
   gpathmode: () => { gx.pathMode = !gx.pathMode; gPanel(); },
   gclear: () => { gx.path = null; gHl(); gPanel(); },

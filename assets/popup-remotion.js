@@ -1,4 +1,4 @@
-// 확산 지도 팝업용 Remotion 컴포지션. 빌드 없이 쓰기 위해 ESM CDN에서 불러오고 JSX 대신 createElement를 쓴다.
+// 확산 지도·연구 네트워크 팝업용 Remotion 컴포지션. 빌드 없이 쓰기 위해 ESM CDN에서 불러오고 JSX 대신 createElement를 쓴다.
 import React from 'https://esm.sh/react@18.3.1';
 import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
 import { Player } from 'https://esm.sh/@remotion/player@4.0.200?deps=react@18.3.1,react-dom@18.3.1';
@@ -16,7 +16,8 @@ const Card = ({ d }) => {
   const title = pop(4, { damping: 14 });
   const lineW = interpolate(f, [84, 138], [0, 100], clamp);
 
-  const nums = [[d.y0, '년', '첫 지원', false], [d.span, '년', '확산 기간', true], [d.invest, '억', '실질 투입', true], [d.roi, '', '성과 지수', true]];
+  // 연구자 팝업은 d.nums로 숫자 칸을 바꾸고, 단계 수(4~5)에 맞춰 간격을 나눈다
+  const nums = d.nums || [[d.y0, '년', '첫 지원', false], [d.span, '년', '확산 기간', true], [d.invest, '억', '실질 투입', true], [d.roi, '', '성과 지수', true]], sn = Math.max(1, d.stages.length - 1);
   return h(AbsoluteFill, { style: { background: `linear-gradient(135deg, ${d.color}, #27365A)`, color: '#fff', fontFamily: 'Pretendard, "Malgun Gothic", sans-serif', opacity: out, overflow: 'hidden' } },
     // 떠다니는 유기적 도형
     h('div', { style: { position: 'absolute', width: 190, height: 170, right: -50 + Math.sin(f / 24) * 12, top: -50 + Math.cos(f / 30) * 10, borderRadius: '42% 58% 55% 45%/55% 44% 56% 45%', background: '#fff', opacity: .14, transform: `rotate(${f / 3}deg)` } }),
@@ -42,15 +43,15 @@ const Card = ({ d }) => {
       h('div', { style: { position: 'absolute', left: 0, width: `${lineW}%`, top: 9, height: 3, background: '#fff', borderRadius: 2 } }),
       d.stages.map((s, i) => {
         const p = pop(84 + i * 18, { damping: 9 });
-        return h('div', { key: i, style: { position: 'absolute', left: `${i * 100 / 3}%`, top: 0, width: 0 } },
+        return h('div', { key: i, style: { position: 'absolute', left: `${i * 100 / sn}%`, top: 0, width: 0 } },
           h('div', { style: { width: 20, height: 20, marginLeft: -10, borderRadius: '50%', background: '#fff', color: d.color, fontSize: 11, fontWeight: 700, lineHeight: '20px', textAlign: 'center', transform: `scale(${p})` } }, i + 1),
           h('div', { style: { width: 90, marginLeft: -45, textAlign: 'center', fontSize: 9.5, marginTop: 4, opacity: p } }, h('b', null, s.year), ' ', s.label));
       })),
 
     // 기여 구성 막대와 등급 배지
     h('div', { style: { position: 'absolute', left: 22, right: 22, bottom: 16, display: 'flex', alignItems: 'center', gap: 10 } },
-      h('div', { style: { flex: 1, height: 12, borderRadius: 6, background: 'rgba(255,255,255,.22)', display: 'flex', overflow: 'hidden' } },
-        d.mix.map((v, i) => h('div', { key: i, style: { width: `${v * interpolate(f, [150 + i * 5, 178 + i * 5], [0, 1], clamp)}%`, background: ['#fff', '#FFD0DF', '#FFE2B5', '#B7F0DF'][i] } }))),
+      h('div', { style: { flex: 1, height: 12, borderRadius: 6, background: 'rgba(255,255,255,.22)', display: 'flex', overflow: 'hidden', visibility: d.mix ? 'visible' : 'hidden' } },
+        (d.mix || []).map((v, i) => h('div', { key: i, style: { width: `${v * interpolate(f, [150 + i * 5, 178 + i * 5], [0, 1], clamp)}%`, background: ['#fff', '#FFD0DF', '#FFE2B5', '#B7F0DF'][i] } }))),
       h('div', { style: { fontSize: 10.5, fontWeight: 700, background: '#fff', color: '#27365A', padding: '4px 10px', borderRadius: 999, transform: `scale(${pop(176, { damping: 8 })})`, whiteSpace: 'nowrap' } }, `${d.ctype} · ${d.grade}`)));
 };
 
