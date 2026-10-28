@@ -48,8 +48,9 @@ module.exports = ctx => {
   };
 
   /* ---------- 공유 상태(db.data 대체): 공개 화면에 필요한 키만 로그인 없이 읽는다 ---------- */
-  const STATE_KEYS = ['status', 'evidence', 'review', 'interviews', 'imported', 'linked', 'scoreOv', 'drafts', 'workflow'];
-  const PUBLIC_KEYS = ['status', 'imported', 'scoreOv'];
+  const STATE_KEYS = ['status', 'evidence', 'review', 'interviews', 'imported', 'linked', 'scoreOv', 'drafts', 'workflow', 'infoData', 'infoOut'];
+  // infoData(인포그래픽에 반영한 숫자·연도)는 공개 화면에도 쓰고, infoOut(관련 성과 제목 목록)은 로그인한 연구진만 읽는다
+  const PUBLIC_KEYS = ['status', 'imported', 'scoreOv', 'infoData'];
   const WRITE_BY = { review: ['admin', 'researcher', 'reviewer'], workflow: ['admin', 'researcher', 'reviewer'] };
 
   /* ---------- 시연 데이터: 공개 API·공유 미리보기용으로 data.js를 격리 실행해 읽는다 ---------- */

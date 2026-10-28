@@ -47,6 +47,7 @@ const pinfoPoster = it => {
           <p class="p-note">길러 낸 연구 인력이 학계와 산업으로 퍼져 다음 세대 연구를 잇습니다.</p></div>
       </div>
 
+      ${typeof realRow === 'function' ? realRow(it) : ''}
       <div class="p-three">
         <div ${mo(0)}><h4>발굴·검증</h4><div class="p-kv"><span>발굴 트랙</span><div>${TRACKS[it.track]}${it.track === 'both' ? ' · 핵심 후보' : ' · 추가 근거 확인'}</div><span>근거문헌</span><div>${evOf(it)}건 확인 ${evOf(it) >= 2 ? '(기준 충족)' : '(2건 이상 필요)'}</div><span>검증 단계</span><div>${STAGES.map((st, i) => `<em class="p-step ${i <= stageOf(it) ? 'on' : ''}">${st}</em>`).join('')}</div><span>공개 동의</span><div>${iv?.consent || it.consent ? '인터뷰·공개 동의' : '동의 확인 중 (익명 표기)'}</div></div></div>
         <div ${mo(1)}><h4>함께 만든 대표성과</h4>${outs.map(o => `<div class="p-person"><span class="blob ${dom(o.domain).g}">${o.id.slice(2)}</span><div><b>${o.title}</b><br>${o.path[0].year} → ${o.path[3].year} · ${PATH_STAGES[3]}까지 ${o.path[3].year - o.path[0].year}년</div></div>`).join('') || '<p class="p-note">연계 성과 확인 중</p>'}</div>
@@ -61,7 +62,8 @@ OUT.pinfo = () => {
   ${spec('인물 중심', [['보여주는 것', '대표 연구자 한 명의 성장을 한 장으로 — 첫 지원부터 전환점, 생애주기별 역할 변화, 연구가 남긴 것, 사람으로 이어진 확산'], ['구성 요소', '제목·한 줄 요약·체감 문구 · 핵심 숫자 6개 · 50년 시간축(전환점 ★)과 단계 간 시차 · 생애주기 단계별 사업·역할·산출·기간 · 성과 이력 · 기여 강도와 전환점 · 세부기준 점수 · 영역 평균 비교 · 영역 내 위치 · 사제·공동연구 확산 · 발굴·검증·공개 동의 · 연계 대표성과 · 이야기 흐름 · 출처'], ['모션', '대표성과 인포그래픽과 같음 — 숫자 올라가기, 시간축 그리기, 막대 차오르기, 차례로 떠오르기'], ['개인정보', '연구자는 분야로 익명 표기, 공개 동의 확인 후 실명·사진 사용'], ['활용처', '인물관 상세, 사례집·백서, 웹 게시용 단독 HTML, 50주년 전시']])}
   <section class="slide">
     <div class="toolbar" style="margin-bottom:16px"><h2 style="flex:1 1 220px">대표연구자 <b>인포그래픽 예제</b></h2>${pk}
-      <button class="btn" data-act="inforeplay">모션 다시 재생</button><button class="btn pri" data-act="infohtml" data-v="one" data-k="p">HTML 내려받기</button><button class="btn" data-act="infohtml" data-v="all" data-k="p">50인 전체 HTML (ZIP)</button><button class="btn" data-act="print">인쇄</button></div>
+      <button class="btn pri" data-act="inforefresh" data-v="${it.id}" ${isAdmin() ? '' : 'disabled title="관리자·연구진 로그인 후 쓸 수 있습니다"'}>데이터 갱신</button><button class="btn" data-act="idview2" data-v="${it.id}" ${isAdmin() ? '' : 'hidden'}>수집 값 검토</button><button class="btn" data-act="inforeplay">모션 다시 재생</button><button class="btn" data-act="infohtml" data-v="one" data-k="p">HTML 내려받기</button><button class="btn" data-act="infohtml" data-v="all" data-k="p">50인 전체 HTML (ZIP)</button><button class="btn" data-act="print">인쇄</button></div>
+    ${infoStatus(it)}
     <div id="infostage">${pinfoPoster(it)}</div>
     <p class="mute sm mt">HTML 파일은 스타일과 모션이 모두 들어 있는 단독 파일입니다(글꼴만 인터넷에서 받습니다).</p>
     <div class="chips mt"><button class="btn" data-act="open" data-v="${it.id}">연구자 상세 열기</button><button class="btn" data-act="sub" data-v="life">이 연구자의 성장 흐름도 보기</button></div>

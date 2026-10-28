@@ -5,8 +5,8 @@ const LS = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 저장 불가 환경에서는 세션 내 상태만 유지 */ } },
 };
 const db = {
-  KEYS: ['status', 'evidence', 'review', 'interviews', 'imported', 'linked', 'scoreOv', 'drafts', 'workflow'],
-  data: { status: {}, evidence: {}, review: {}, interviews: [], imported: { o: [], p: [] }, linked: {}, scoreOv: {}, drafts: {}, workflow: {} },
+  KEYS: ['status', 'evidence', 'review', 'interviews', 'imported', 'linked', 'scoreOv', 'drafts', 'workflow', 'infoData', 'infoOut'],
+  data: { status: {}, evidence: {}, review: {}, interviews: [], imported: { o: [], p: [] }, linked: {}, scoreOv: {}, drafts: {}, workflow: {}, infoData: {}, infoOut: {} },
   load() {
     const d = LS.get('nrf50.db', null);
     if (d) for (const k of this.KEYS) if (d[k] !== undefined) this.data[k] = d[k];

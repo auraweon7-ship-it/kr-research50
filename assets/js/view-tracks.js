@@ -120,6 +120,7 @@ const renderGrid = () => {
       <h4>${k === 'p' ? `${it.title} <span class="mute" style="font-weight:500">· ${it.field}</span>` : it.title}</h4>${it.imported ? '<span class="tag ok" style="align-self:flex-start">가져온 데이터</span>' : ''}
       <p class="mute sm">${FEEL[it.guide]}</p>
       <div class="tags"><span class="tag">${guides[it.guide]}</span>${k === 'o' ? `<span class="tag">${STORY[it.ctype].k} ${it.ctype}</span>` : `<span class="tag">${it.life[it.life.length - 1].stage}</span>`}<span class="tag">${GRADES[it.grade].label}</span></div>
+      ${typeof cardTable === 'function' ? cardTable(it) : ''}
       <div class="card-foot">${trackDots(it)}<span class="mute sm">${k === 'o' ? `${it.path[0].year} → ${it.path[3].year}` : `첫 지원 ${it.y0} · ${it.years}년`}</span></div>
     </button>`;
   }).join('') || '<p class="mute">조건에 맞는 후보가 없습니다.</p>';

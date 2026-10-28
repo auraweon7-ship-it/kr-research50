@@ -242,7 +242,7 @@ const recDetail = r => {
     <textarea class="field mt" id="paitext" rows="5" placeholder="결과보고서 초록이나 본문을 붙여넣으세요 (15만 자 이하)" style="width:100%;resize:vertical"></textarea>
     <div class="chips mt"><button class="btn pri" data-act="pai" data-v="${esc(r.key)}">AI로 구조화</button><span class="mute sm" style="align-self:center">서버에 ANTHROPIC_API_KEY가 있고 관리자 로그인 상태일 때 동작합니다. 결과는 연구진 확인 전까지 '미확인'입니다.</span></div>
     <h3 class="mt2" style="font-size:13.5px">출처 문구</h3><div class="story sm">${esc(cite([r.src]))} · 이용조건: ${esc(lic(r.src).terms)}</div>
-    <div class="chips mt">${r.kind === 'project' ? `<button class="btn ${r.pool === 'o' ? 'on' : ''}" data-act="pmark" data-v="${esc(r.key)}">${r.pool === 'o' ? '성과 후보 해제' : '성과 후보로 표시'}</button>` : ''}<button class="btn" data-act="pexclude" data-v="${esc(r.key)}">제외</button></div>
+    <div class="chips mt">${r.kind === 'project' ? `<button class="btn ${r.pool === 'o' ? 'on' : ''}" data-act="pmark" data-v="${esc(r.key)}">${r.pool === 'o' ? '성과 후보 해제' : '성과 후보로 표시'}</button>` : ''}<button class="btn" data-act="pexclude" data-v="${esc(r.key)}">제외</button>${typeof poolItemSel === 'function' ? poolItemSel(r) : ''}</div>
     <details class="alt"><summary>원자료 항목 ${r.raw?.length || 0}개</summary>${tbl(['태그·열', '값'], (r.raw || []).map(([k, v]) => [esc(k), esc(String(v).slice(0, 200))]))}</details></section>`;
 };
 

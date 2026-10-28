@@ -247,9 +247,10 @@ new MutationObserver(ms => { if (state.lang !== 'en') return; for (const m of ms
 
 /* ---------- 시작 ---------- */
 applyImported();
+if (typeof applyInfoData === 'function') applyInfoData();
 if (typeof applyScoreOv === 'function') applyScoreOv();
 applyHash();
 render(); syncHash(false);
 remote.ready.then(on => { if (!on) return;
   // 서버 세션이 끝났는데 이 탭은 로그인 상태로 기억하고 있으면 풀어 준다(서버 재시작·만료)
-  if (remote.kind === 'server' && state.role && !srvStore.role) { state.role = null; state.admin = false; try { sessionStorage.removeItem('nrf50.role'); sessionStorage.removeItem('nrf50.admin'); } catch (e) { /* 저장 불가 */ } render(); toast('로그인 세션이 끝났습니다. 다시 로그인하세요.'); } const tick = async () => { if (await remote.pull()) { applyImported(); if (typeof applyScoreOv === 'function') applyScoreOv(); render(); } else { const el = $('#storestat'); if (el) el.textContent = storeLabel(); } }; tick(); setInterval(tick, 45000); });
+  if (remote.kind === 'server' && state.role && !srvStore.role) { state.role = null; state.admin = false; try { sessionStorage.removeItem('nrf50.role'); sessionStorage.removeItem('nrf50.admin'); } catch (e) { /* 저장 불가 */ } render(); toast('로그인 세션이 끝났습니다. 다시 로그인하세요.'); } const tick = async () => { if (await remote.pull()) { applyImported(); if (typeof applyInfoData === 'function') applyInfoData(); if (typeof applyScoreOv === 'function') applyScoreOv(); render(); } else { const el = $('#storestat'); if (el) el.textContent = storeLabel(); } }; tick(); setInterval(tick, 45000); });
