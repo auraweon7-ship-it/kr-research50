@@ -277,6 +277,7 @@ const mountMap = () => {
   const ph = $('#gmap'); if (!ph) { mapStop(); return; }
   if (gm.el && gm.el !== ph) ph.replaceWith(gm.el); else gm.el = ph;
   if (gm.fail) return mapFallback();
+  const sp = $('#spreadstage'); if (sp) infoPlay(sp);
   if (gm.map) { drawMarkers(); mapCountUp(); flowStart(); return; }
   loadMaps().then(() => {
     if (gm.fail || gm.map) return;
@@ -363,19 +364,57 @@ const flowLoop = now => {
 };
 
 const spreadPoster = (list, reg) => {
-  const n = list.length || 1, span = Math.round(list.reduce((a, o) => a + o.path[3].year - o.path[0].year, 0) / n), top = [...reg].sort((a, b) => b.items.length - a.items.length), mx = Math.max(1, top[0].items.length);
-  const g = Object.entries(O_GUIDE).map(([k, l]) => [l, list.filter(o => o.guide === k).length]), gmx = Math.max(1, ...g.map(x => x[1]));
-  return `<article class="poster">
-    <header class="g-teal"><span>대한민국 연구 50년 · 확산 인포그래픽</span><h2>연구실에서 시작해<br>전국의 일상으로</h2><p>재단 지원 성과가 닿은 권역과 생활 분야를 한 장으로</p><i class="pd1"></i><i class="pd2"></i></header>
-    <div class="p-nums">${[[list.length, '건', '확산 성과'], [reg.filter(r => r.items.length).length, '개', '확산 권역'], [span, '년', '평균 확산 기간'], [avgMix(list, 3)[3], '%', '활용 단계 민간 투자 비중']].map(([v, u, l]) => `<div><b>${v}<small>${u}</small></b><span>${l}</span></div>`).join('')}</div>
-    <div class="p-two">
-      <div><h4>권역별 확산 성과</h4><div class="p-bars">${top.map((r, i) => `<p><span>${r.id}</span><i><em class="${G[i % 4]}" style="width:${r.items.length / mx * 100}%"></em></i><b>${r.items.length}</b></p>`).join('')}</div></div>
-      <div><h4>어떤 분야에 닿았나</h4><div class="p-blobs">${g.map(([l, v], i) => { const sz = 40 + v / gmx * 34; return `<div><span class="blob ${G[i % 4]} b${i % 3 + 1}" style="width:${sz}px;height:${sz * .92}px">${v}</span><small>${l}</small></div>`; }).join('')}</div></div>
+  const n = list.length || 1, spanOf = o => o.path[3].year - o.path[0].year, span = Math.round(list.reduce((a, o) => a + spanOf(o), 0) / n);
+  const top = [...reg].sort((a, b) => b.items.length - a.items.length), mx = Math.max(1, top[0].items.length), Y = state.mapf.year;
+  const g = Object.entries(O_GUIDE).map(([k, l]) => [l, list.filter(o => o.guide === k).length, k]), gmx = Math.max(1, ...g.map(x => x[1]));
+  const sel = list.filter(o => stageOf(o) === 3).length, use = list.filter(o => stageAt(o, Y) === 3).length;
+  // 단계 사이 평균 시차
+  const gaps = [0, 1, 2].map(i => list.length ? +(list.reduce((a, o) => a + o.path[i + 1].year - o.path[i].year, 0) / list.length).toFixed(1) : 0);
+  // 연도별 산업·사회 활용 도달 누적 곡선
+  const ys = []; for (let y = 1980; y <= 2026; y++) ys.push([y, list.filter(o => o.path[3].year <= y).length]);
+  const cmax = Math.max(1, ys.at(-1)[1]), W = 880, H = 150, X = i => 30 + i / (ys.length - 1) * (W - 50), Yp = v => H - 22 - v / cmax * (H - 40);
+  const line = ys.map(([, v], i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Yp(v).toFixed(1)}`).join(' ');
+  const half = ys.find(([, v]) => v >= cmax / 2)?.[0];
+  const curve = `<svg viewBox="0 0 ${W} ${H}" class="sp-curve" role="img" aria-label="산업·사회 활용 도달 누적 곡선">
+    ${ERAS.map((e, i) => { const a = Math.max(1980, e.from), b = Math.min(2026, e.to); return `<rect x="${X(a - 1980)}" y="8" width="${X(b - 1980) - X(a - 1980)}" height="${H - 30}" fill="${GC_HEX[i % 4]}" opacity=".07"/><text x="${X(a - 1980) + 4}" y="20" class="ia-era">${e.no} ${e.label}</text>`; }).join('')}
+    ${[1980, 1990, 2000, 2010, 2020].map(y => `<text x="${X(y - 1980)}" y="${H - 6}" text-anchor="middle" class="ia-t">${y}</text>`).join('')}
+    <path d="${line} L${X(ys.length - 1)},${H - 22} L${X(0)},${H - 22} Z" fill="#27B894" opacity=".16" class="sp-area"/>
+    <path d="${line}" fill="none" stroke="#27B894" stroke-width="3" pathLength="1" class="mo-draw"/>
+    ${half ? `<g class="ia-dot" style="--d:1.6s"><circle cx="${X(half - 1980)}" cy="${Yp(cmax / 2)}" r="6" fill="#fff" stroke="#27B894" stroke-width="3"/><text x="${X(half - 1980) + 10}" y="${Yp(cmax / 2) - 8}" class="ia-l">${half}년 절반 도달</text></g>` : ''}
+    <g class="ia-dot" style="--d:2s"><circle cx="${X(ys.length - 1)}" cy="${Yp(cmax)}" r="6" fill="#27B894"/><text x="${X(ys.length - 1) - 8}" y="${Yp(cmax) - 10}" text-anchor="end" class="ia-l">${cmax}건</text></g></svg>`;
+  // 가장 빨리 생활 속으로 간 성과, 지식 흐름이 가장 많은 성과
+  const fast = [...list].sort((a, b) => spanOf(a) - spanOf(b)).slice(0, 5), ids = new Set(list.map(o => o.id));
+  const L = (typeof mapLinks === 'function' ? mapLinks() : []).filter(l => ids.has(l.a) && ids.has(l.b)), deg = {}; L.forEach(l => { deg[l.a] = (deg[l.a] || 0) + 1; deg[l.b] = (deg[l.b] || 0) + 1; });
+  const hubs = Object.entries(deg).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, d]) => [byId(id), d]);
+  // 권역 사이 지식 흐름
+  const pair = {}; L.forEach(l => { const a = byId(l.a).region, b = byId(l.b).region; if (a !== b) { const k = [a, b].sort().join(' ↔ '); pair[k] = (pair[k] || 0) + 1; } });
+  const pairs = Object.entries(pair).sort((a, b) => b[1] - a[1]).slice(0, 6), pmx = Math.max(1, ...pairs.map(p => p[1]));
+  const regSpan = r => r.items.length ? Math.round(r.items.reduce((a, o) => a + spanOf(o), 0) / r.items.length) : 0;
+  return `<article class="poster wide mo sp-poster">
+    <header class="g-teal"><span>대한민국 연구 50년 · 확산 인포그래픽</span><h2>연구실에서 시작해<br>전국의 일상으로</h2><p>재단 지원 성과가 닿은 권역과 생활 분야, 그리고 50년의 확산 속도를 한 장으로</p>
+      <p class="p-lead">${list.length}건의 성과가 평균 <b>${span}년</b> 만에 산업·사회 활용에 이르렀고, ${reg.filter(r => r.items.length).length}개 권역 모두로 퍼졌습니다</p><i class="pd1"></i><i class="pd2"></i><i class="pd3"></i></header>
+    <div class="p-nums six">${[[list.length, '건', '확산 성과'], [reg.filter(r => r.items.length).length, '개', '확산 권역'], [span, '년', '평균 확산 기간'], [avgMix(list, 3)[3], '%', '활용 단계 민간 투자'], [sel, '건', '최종선정'], [use, '건', `${Y}년 활용 도달`]].map(([v, u, l], i) => `<div ${mo(i)}><b>${cnt(v)}<small>${u}</small></b><span>${l}</span></div>`).join('')}</div>
+
+    <h4>50년 확산 곡선 · 산업·사회 활용에 이른 성과 누적</h4>
+    <div class="p-axis">${curve}</div>
+
+    <h4>확산의 경로 · 단계마다 걸린 시간과 정부 비중</h4>
+    <div class="sp-path">${PATH_STAGES.map((a, i) => `<div ${mo(i, .14)}><span class="blob ${G[(i + 3) % 4]} b${i % 3 + 1}">${i + 1}</span><b>${a}</b><small>정부 ${avgMix(list, i)[0]}% · 민간 ${avgMix(list, i)[3]}%</small><i class="grow" style="--d:${(.3 + i * .15).toFixed(2)}s">${stack(avgMix(list, i))}</i></div>${i < 3 ? `<em ${mo(i, .14)}>평균 <b>${cnt(gaps[i])}</b>년 →</em>` : ''}`).join('')}</div>
+    <div class="p-legend">${FACTORS.map(f => `<span><i style="background:${f.color}"></i>${f.label}</span>`).join('')}<span class="mute">· 막대는 단계별 평균 기여 구성</span></div>
+
+    <div class="p-three">
+      <div ${mo(0)}><h4>권역별 확산 성과 · 평균 확산 기간</h4><div class="p-bars">${top.map((r, i) => `<p><span>${r.id}</span><i><em class="grow ${G[i % 4]}" style="width:${r.items.length / mx * 100}%;--d:${(i * .06).toFixed(2)}s"></em></i><b>${r.items.length}<small class="mute"> · ${regSpan(r)}년</small></b></p>`).join('')}</div></div>
+      <div ${mo(1)}><h4>어떤 생활 분야에 닿았나</h4><div class="p-blobs">${g.map(([l, v], i) => { const sz = 40 + v / gmx * 34; return `<div><span class="blob ${G[i % 4]} b${i % 3 + 1} sp-pop" style="width:${sz}px;height:${sz * .92}px;--d:${(.2 + i * .1).toFixed(2)}s">${v}</span><small>${l}</small></div>`; }).join('')}</div></div>
+      <div ${mo(2)}><h4>권역 사이 지식 흐름 · 계보·연구자 공유</h4>${pairs.length ? `<div class="p-bars">${pairs.map(([k, v], i) => pbar(k, v / pmx * 100, v, GC_HEX[i % 4])).join('')}</div>` : '<p class="p-note">권역을 넘는 흐름이 없습니다.</p>'}<p class="p-note">지도 위 지식 흐름선 ${L.length}개 중 권역을 넘는 것 ${Object.values(pair).reduce((a, b) => a + b, 0)}개</p></div>
     </div>
-    <h4>확산의 경로</h4>
-    <div class="p-arc">${PATH_STAGES.map((a, i) => `${i ? chev : ''}<b>${a} <span style="color:var(--mute);font-weight:500">정부 ${avgMix(list, i)[0]}%</span></b>`).join('')}</div>
+
+    <div class="p-two">
+      <div ${mo(0)}><h4>가장 빨리 생활 속으로 간 성과</h4><ol class="sp-rank">${fast.map((o, i) => `<li style="--d:${(.2 + i * .1).toFixed(2)}s"><b>${i + 1}</b><span>${esc(o.title)}<small>${o.region} · ${o.path[0].year} → ${o.path[3].year}</small></span><em>${spanOf(o)}년</em></li>`).join('')}</ol></div>
+      <div ${mo(1)}><h4>지식 흐름이 가장 많이 모인 성과</h4><ol class="sp-rank">${hubs.map(([o, d], i) => `<li style="--d:${(.2 + i * .1).toFixed(2)}s"><b>${i + 1}</b><span>${esc(o.title)}<small>${o.region} · ${dom(o.domain).short}</small></span><em>${d}개</em></li>`).join('') || '<li><span class="mute">연결 없음</span></li>'}</ol></div>
+    </div>
+
     <h4>시대별 확산 속도</h4>
-    <div class="p-path" style="grid-template-columns:repeat(5,1fr)">${ERAS.map((e, i) => { const l = list.filter(o => o.era === e.id), s = l.length ? Math.round(l.reduce((a, o) => a + o.path[3].year - o.path[0].year, 0) / l.length) : 0; return `<div><span class="blob ${G[i % 4]} b${i % 3 + 1}">${l.length}</span><small>${e.no} ${e.label}</small><b>${s ? `평균 ${s}년` : '—'}</b><em>${e.from}~${e.to}</em></div>`; }).join('')}</div>
+    <div class="p-path" style="grid-template-columns:repeat(5,1fr)">${ERAS.map((e, i) => { const l = list.filter(o => o.era === e.id), s = l.length ? Math.round(l.reduce((a, o) => a + spanOf(o), 0) / l.length) : 0; return `<div ${mo(i, .1)}><span class="blob ${G[i % 4]} b${i % 3 + 1}">${l.length}</span><small>${e.no} ${e.label}</small><b>${s ? `평균 ${s}년` : '—'}</b><em>${e.from}~${e.to}</em></div>`; }).join('')}</div>
     <footer><span>데이터 출처: 재단 과제 DB · NTIS · KRM (시연용 예시 데이터)</span><span>한국연구재단 | 한국외국어대학교</span></footer>
   </article>`;
 };
@@ -431,8 +470,8 @@ OUT.map = () => {
     ${foot('대국민 확산 지도')}
   </section>
   <section class="slide">
-    <div class="toolbar" style="margin-bottom:16px"><h2 style="flex:1">확산 <b>인포그래픽</b></h2><button class="btn" data-act="print">인쇄</button></div>
-    ${spreadPoster(list, reg)}
+    <div class="toolbar" style="margin-bottom:16px"><h2 style="flex:1">확산 <b>인포그래픽</b> <span class="mute sm">지도의 필터·연도 조건을 따릅니다</span></h2><button class="btn" data-act="spreplay">모션 다시 재생</button><button class="btn" data-act="print">인쇄</button></div>
+    <div id="spreadstage">${spreadPoster(list, reg)}</div>
   </section>
   ${slide('권역 × <b>지원 영역</b>', tbl(['권역', ...DOMAINS.map(x => x.short), '합계'], reg.map(r => [r.id, ...DOMAINS.map(x => r.items.filter(o => o.domain === x.id).length || '<span class="mute">—</span>'), `<b>${r.items.length}</b>`])))}`;
 };
@@ -441,6 +480,7 @@ Object.assign(ACT, {
   mq: v => { state.mapf.q = String(v).slice(0, 60); render(); },
   mcolor: v => { state.mapf.color = v; render(); },
   mrings: () => { state.mapf.rings = !state.mapf.rings; render(); },
+  spreplay: () => { const sp = $('#spreadstage'); if (sp) infoPlay(sp, true); },
   mflows: (v, t) => { state.mapf.flows = !state.mapf.flows; t.classList.toggle('on', state.mapf.flows); },
   mfit: () => { if (gm.map) { gm.info.close(); gm.map.panTo({ lat: 36.1, lng: 127.8 }); gm.map.setZoom(7); gm.region = state.region; } },
   mplay: () => {
