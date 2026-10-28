@@ -216,8 +216,24 @@ const makeFx = () => class FxLayer extends google.maps.OverlayView {
   onRemove() { this.div?.remove(); this.nodes.clear(); this.waves.clear(); }
   draw() {
     const pj = this.getProjection(); if (!pj) return;
-    for (const [id, n] of this.nodes) { const p = pj.fromLatLngToDivPixel(new google.maps.LatLng(n._ll)); n.style.transform = `translate(${p.x}px,${p.y}px)`; }
+    // 지도 확대 단계와 지도 너비에 맞춰 표지·파동·제목 크기를 함께 바꾼다
+    const map = this.getMap(), z = map.getZoom() || 7, cw = map.getDiv().clientWidth || 900;
+    const zf = Math.max(.65, Math.min(2, (.85 + (z - 7) * .22) * Math.pow(cw / 900, .4))), lf = Math.max(.85, Math.min(1.35, .9 + (zf - 1) * .5));
+    this.div.style.setProperty('--zf', zf.toFixed(3)); this.div.style.setProperty('--lf', lf.toFixed(3)); this.zf = zf;
+    for (const [id, n] of this.nodes) { const p = pj.fromLatLngToDivPixel(new google.maps.LatLng(n._ll)); n._p = p; n.style.transform = `translate(${p.x}px,${p.y}px)`; }
     for (const [, w] of this.waves) { const p = pj.fromLatLngToDivPixel(new google.maps.LatLng(w._ll)); w.style.transform = `translate(${p.x}px,${p.y}px)`; }
+    this.labels();
+  }
+  // 제목 겹침 정리: 중요한 표지(선택·최종선정·활용 단계) 제목부터 자리를 잡고, 겹치는 제목은 숨긴다(마우스를 올리면 보임)
+  labels() {
+    const y = state.mapf.year, live = [...this.nodes.values()].filter(n => !n.classList.contains('out') && n._p);
+    const pr = n => (n.classList.contains('foc') ? 1e4 : 0) + (n.classList.contains('sel') ? 1e3 : 0) + Math.max(0, stageAt(byId(n.dataset.id), y)) * 10 + (n.classList.contains('reg') ? 5 : 0);
+    const placed = [];
+    for (const n of live.sort((a, b) => pr(b) - pr(a))) {
+      const t = n.querySelector('.fxt'), w = t.offsetWidth || 80, h = t.offsetHeight || 18, R = [n._p.x + 6, n._p.y - h / 2, n._p.x + 10 + w, n._p.y + h / 2];
+      const hit = placed.some(q => R[0] < q[2] && R[2] > q[0] && R[1] < q[3] && R[3] > q[1]);
+      n.classList.toggle('lh', hit); if (!hit) placed.push(R);
+    }
   }
   // list: 보일 성과. intro면 첫 지원 연도 순으로 차례로 떠오르고, 재생 중 단계가 오르면 터지는 파동을 낸다
   update(list, { intro = false, quiet = false } = {}) {
@@ -228,11 +244,11 @@ const makeFx = () => class FxLayer extends google.maps.OverlayView {
       let n = this.nodes.get(o.id); const st = Math.max(0, stageAt(o, y)), prev = this.st.get(o.id);
       if (!n || n.classList.contains('out')) {
         n?.remove(); n = document.createElement('div'); n.className = 'fxm in'; n.dataset.id = o.id; n._ll = geoOf(o);
-        n.innerHTML = `<i class="fxh"></i><i class="fxc"></i><span class="fxt">${esc(o.title)}</span>`;
+        n.innerHTML = `<i class="fxh"></i><i class="fxc"></i><span class="fxt" data-full="${esc(o.title)}">${esc(o.title.length > 13 ? `${o.title.slice(0, 12)}…` : o.title)}</span>`; n.title = o.title;
         n.style.setProperty('--d', `${intro ? Math.min(2.4, order.indexOf(o.id) * .04) : quiet ? 0 : Math.min(.6, i * .012)}s`);
         this.div.appendChild(n); this.nodes.set(o.id, n); setTimeout(() => n.classList.remove('in'), 2600);
       }
-      n.style.setProperty('--c', markCol(o)); n.className = `fxm s${st}${stageOf(o) === 3 ? ' sel' : ''}${n.classList.contains('in') ? ' in' : ''}${o.region === state.region ? ' reg' : ''}`;
+      n.style.setProperty('--c', markCol(o)); n.className = `fxm s${st}${stageOf(o) === 3 ? ' sel' : ''}${n.classList.contains('in') ? ' in' : ''}${n.classList.contains('foc') ? ' foc' : ''}${o.region === state.region ? ' reg' : ''}`;
       // 재생 중 단계가 올라가면 한 번 터진다
       if (quiet && prev != null && st > prev) { const b = document.createElement('i'); b.className = `fxb b${st}`; n.appendChild(b); setTimeout(() => b.remove(), 1300); }
       this.st.set(o.id, st);
@@ -248,7 +264,7 @@ const makeFx = () => class FxLayer extends google.maps.OverlayView {
     }
     this.draw();
   }
-  focus(id) { for (const [k, n] of this.nodes) n.classList.toggle('foc', k === id); }
+  focus(id) { for (const [k, n] of this.nodes) n.classList.toggle('foc', k === id); this.labels(); }
 };
 const drawMarkers = (quiet, intro) => {
   const list = mapList();
@@ -269,6 +285,7 @@ const mountMap = () => {
     gm.info = new google.maps.InfoWindow({ maxWidth: 460 });
     gm.info.addListener('closeclick', () => { gm.un?.(); gm.un = null; gm.fx?.focus(null); gm.focusId = null; });
     const Fx = makeFx(); gm.fx = new Fx(); gm.fx.setMap(gm.map);
+    new ResizeObserver(() => gm.fx?.draw()).observe(gm.el);
     gm.region = state.region;
     const zoomIn = () => { if (gm.map.getZoom() < 7) gm.map.setZoom(7); };
     google.maps.event.addListenerOnce(gm.map, 'tilesloaded', () => setTimeout(zoomIn, 250)); setTimeout(zoomIn, 1500);
