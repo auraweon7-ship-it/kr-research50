@@ -4,7 +4,23 @@ const LINKT = { tie: ['성과–연구자 연계', '#C9D2E3', '대표 성과와 
 const ERA_C = ['#EC5C8D', '#F6A53A', '#27B894', '#3D9FE6', '#9B8CFF'], STAGE_C = ['#7E8AA6', '#3D9FE6', '#F6A53A', '#27B894'];
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const gx = { pos: {}, tf: { x: 0, y: 0, k: 1 }, cam: null, auto: true, show: { o: true, p: true }, types: { tie: true, co: true, gen: true, ment: true }, domain: '', scope: 'all',
-  sel: null, hover: null, q: '', alpha: 0, year: 2026, playing: false, color: 'domain', size: 'deg', depth: 1, pathMode: false, path: null, force: { rep: 520, dist: 62, grav: 5 }, N: [], L: [], V: [], VL: [], vadj: {} };
+  sel: null, hover: null, q: '', alpha: 0, year: 2026, playing: false, color: 'domain', size: 'deg', depth: 1, pathMode: false, path: null, force: { rep: 520, dist: 62, grav: 5 }, N: [], L: [], V: [], VL: [], vadj: {},
+  // 보기 설정: 배치(힘·원형·시간축·영역 군집), 곡선 연결, 영역 구름, 라벨, 테마, 이웃만 보기, 크기(높이·노드·글자)
+  layout: 'force', curve: true, clouds: true, labels: 'auto', theme: 'dark', ego: false, wave: null, tour: null,
+  h: Math.max(360, Math.min(1100, +LS.get('nrf50.gh', 640) || 640)), nscale: +LS.get('nrf50.gns', 1) || 1, lsize: +LS.get('nrf50.gls', 11) || 11 };
+const GTHEME = { dark: { bg: '#1B2238', glow: 'rgba(61,159,230,.13)', label: '#E6EBF5', hole: '#1B2238', axis: 'rgba(230,235,245,.14)', axisT: 'rgba(230,235,245,.5)', water: '#fff' }, light: { bg: '#F4F6FA', glow: 'rgba(61,159,230,.10)', label: '#27365A', hole: '#F4F6FA', axis: 'rgba(39,54,90,.10)', axisT: 'rgba(39,54,90,.55)', water: '#27365A' } };
+// 배치 목표 좌표: 힘 배치가 아니면 노드가 목표 자리로 미끄러져 간다(전환 자체가 모션)
+const gTarget = n => {
+  const it = n.it, di = DOMAINS.findIndex(d => d.id === it.domain), o = it.kind === 'o';
+  if (gx.layout === 'time') return [(it.y0 - 2001.5) * 15, (di - 1.5) * 120 + (o ? -26 : 26) + ((n.ph * 7) % 1 - .5) * 34];
+  if (gx.layout === 'ring') { const same = gx.V.filter(m => m.it.domain === it.domain && m.it.kind === it.kind), k = same.indexOf(n), a0 = di / 4 * Math.PI * 2 - Math.PI / 2, span = Math.PI * 2 / 4 * .82, a = a0 + (same.length > 1 ? k / (same.length - 1) : .5) * span; const r = o ? 170 : 290; return [Math.cos(a) * r, Math.sin(a) * r]; }
+  if (gx.layout === 'domain') { const C = [[-210, -150], [210, -150], [-210, 150], [210, 150]][di], same = gx.V.filter(m => m.it.domain === it.domain), k = same.indexOf(n), a = k * 2.4, r = 12 * Math.sqrt(k + 1); return [C[0] + Math.cos(a) * r, C[1] + Math.sin(a) * r]; }
+  return null;
+};
+// 이웃만 보기: 선택 노드에서 depth 단계 안의 노드만 남긴다
+const gEgo = () => { if (!gx.ego || !gx.sel) return null; const s = new Set([gx.sel]); let fr = [gx.sel]; for (let d = 0; d < Math.max(1, gx.depth); d++) { const nx = []; for (const a of fr) for (const b of gx.vadj[a] || []) if (!s.has(b)) { s.add(b); nx.push(b); } fr = nx; } return s; };
+// 선택 파동: 선택한 노드에서 이웃으로 단계별로 번져 나간다
+const gWave = id => { if (!id || REDUCE) { gx.wave = null; return; } const d = new Map([[id, 0]]); let fr = [id]; for (let k = 1; k <= 3; k++) { const nx = []; for (const a of fr) for (const b of gx.vadj[a] || []) if (!d.has(b)) { d.set(b, k); nx.push(b); } fr = nx; } gx.wave = { t0: performance.now(), d }; };
 // 연계(tie)는 후보 데이터의 실제 연결, 나머지 세 종류는 구조 시연용으로 생성한 예시 관계다
 const graphLinks = () => gx.all ||= (() => {
   const L = [];
@@ -68,15 +84,17 @@ const gTick = () => {
     const p = N[i], q = N[j]; let dx = p.x - q.x, dy = p.y - q.y, d2 = dx * dx + dy * dy;
     if (d2 < 1) { dx = (i % 3) - 1 || .5; dy = (j % 3) - 1 || .5; d2 = 1; }
     if (d2 > 90000) continue;
-    const f = Math.min(5, F.rep * a / d2); p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f;
+    const f = Math.min(5, F.rep * (gx.layout === 'force' ? a : .012) / d2); p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f;
   }
   for (const l of gx.VL) { const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.hypot(dx, dy) || 1, f = (d - F.dist) / d * .06 * a; l.a.vx += dx * f; l.a.vy += dy * f; l.b.vx -= dx * f; l.b.vy -= dy * f; }
-  for (const n of N) { n.vx -= n.x * F.grav / 100 * a; n.vy -= n.y * F.grav / 77 * a; n.vx *= .82; n.vy *= .82; if (!n.fixed) { n.x += n.vx; n.y += n.vy; } gx.pos[n.id] = [n.x, n.y]; }
+  const lay = gx.layout !== 'force';
+  for (const n of N) { if (lay) { const T = gTarget(n); if (T) { n.vx += (T[0] - n.x) * .08; n.vy += (T[1] - n.y) * .08; } } else { n.vx -= n.x * F.grav / 100 * a; n.vy -= n.y * F.grav / 77 * a; } n.vx *= .82; n.vy *= .82; if (!n.fixed) { n.x += n.vx; n.y += n.vy; } gx.pos[n.id] = [n.x, n.y]; }
   gx.alpha *= .988;
 };
 const gFitTarget = () => {
-  if (!gx.V.length) return { x: 0, y: 0, k: 1 };
-  const xs = gx.V.map(n => n.x), ys = gx.V.map(n => n.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const eg = gEgo(), VV = eg ? gx.V.filter(n => eg.has(n.id)) : gx.V;
+  if (!VV.length) return { x: 0, y: 0, k: 1 };
+  const xs = VV.map(n => n.x), ys = VV.map(n => n.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const k = Math.max(.35, Math.min(1.7, (gx.cv.clientWidth - 90) / (x1 - x0 || 1), (gx.cv.clientHeight - 150) / (y1 - y0 || 1)));
   return { k, x: -(x0 + x1) / 2 * k, y: -(y0 + y1) / 2 * k - 14 };
 };
@@ -90,43 +108,60 @@ const gPath = (a, b) => {
 
 const gDraw = now => {
   const cv = gx.cv, c = gx.ctx, w = cv.clientWidth, h = cv.clientHeight, { x: tx, y: ty, k } = gx.tf, ox = w / 2 + tx, oy = h / 2 + ty, t = now / 1000;
-  c.setTransform(gx.dpr, 0, 0, gx.dpr, 0, 0); c.globalAlpha = 1; c.fillStyle = '#1B2238'; c.fillRect(0, 0, w, h);
-  const bg = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * .62); bg.addColorStop(0, 'rgba(61,159,230,.13)'); bg.addColorStop(1, 'rgba(61,159,230,0)'); c.fillStyle = bg; c.fillRect(0, 0, w, h);
+  const TH = GTHEME[gx.theme], eg = gEgo(), wv = gx.wave, wt = wv ? (now - wv.t0) / 1000 : 0;
+  c.setTransform(gx.dpr, 0, 0, gx.dpr, 0, 0); c.globalAlpha = 1; c.fillStyle = TH.bg; c.fillRect(0, 0, w, h);
+  const bg = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * .62); bg.addColorStop(0, TH.glow); bg.addColorStop(1, 'rgba(61,159,230,0)'); c.fillStyle = bg; c.fillRect(0, 0, w, h);
+  if (wv && wt > 3.2) gx.wave = null;
   const hl = gx.hl, id = gx.hlId, path = gx.path, q = gx.q.trim().toLowerCase(), rs = Math.max(.7, Math.min(1.7, k)), drift = REDUCE ? 0 : 1.6;
-  for (const n of gx.V) { n.sx = (n.x + Math.sin(t * .7 + n.ph) * drift) * k + ox; n.sy = (n.y + Math.cos(t * .6 + n.ph * 1.7) * drift) * k + oy; }
+  for (const n of gx.V) { n.sx = (n.x + Math.sin(t * .7 + n.ph) * drift) * k + ox; n.sy = (n.y + Math.cos(t * .6 + n.ph * 1.7) * drift) * k + oy; n.hs = (n.hs || 1) + (((n.id === gx.hover || n.id === gx.sel) ? 1.35 : 1) - (n.hs || 1)) * .2; }
+  const vis = n => !eg || eg.has(n.id);
+  // 시간축 배치: 연도 눈금과 영역 줄
+  if (gx.layout === 'time') { c.font = '11px Pretendard, sans-serif'; c.textAlign = 'center'; for (let y = 1980; y <= 2025; y += 5) { const X = (y - 2001.5) * 15 * k + ox; c.globalAlpha = 1; c.strokeStyle = TH.axis; c.lineWidth = 1; c.beginPath(); c.moveTo(X, 0); c.lineTo(X, h); c.stroke(); c.fillStyle = TH.axisT; c.fillText(y, X, 18); } c.textAlign = 'left'; DOMAINS.forEach((d, i) => { const Y = (i - 1.5) * 120 * k + oy; c.fillStyle = d.color; c.globalAlpha = .9; c.fillText(d.short, 12, Y + 4); }); }
+  if (gx.layout === 'ring' || gx.layout === 'domain') { c.font = '700 12px Pretendard, sans-serif'; c.textAlign = 'center'; DOMAINS.forEach((d, i) => { const P = gx.layout === 'ring' ? (() => { const a = i / 4 * Math.PI * 2 - Math.PI / 2 + Math.PI / 4 * .82; return [Math.cos(a) * 360, Math.sin(a) * 360]; })() : [[-210, -150], [210, -150], [-210, 150], [210, 150]][i].map((v, j) => v + (j ? -95 : 0)); c.globalAlpha = .85; c.fillStyle = d.color; c.fillText(d.label, P[0] * k + ox, P[1] * k + oy); }); }
+  // 영역 구름: 같은 영역 노드 무리를 숨 쉬는 빛으로 감싼다
+  if (gx.clouds) for (const d of DOMAINS) { const M = gx.V.filter(n => n.it.domain === d.id && vis(n)); if (M.length < 2) continue; const cx = M.reduce((a, n) => a + n.sx, 0) / M.length, cy = M.reduce((a, n) => a + n.sy, 0) / M.length, rr = Math.sqrt(M.reduce((a, n) => a + (n.sx - cx) ** 2 + (n.sy - cy) ** 2, 0) / M.length) * 1.45 + 30 * k, br = REDUCE ? 1 : 1 + .04 * Math.sin(t * 1.2 + d.id.length); const gr = c.createRadialGradient(cx, cy, 0, cx, cy, rr * br); gr.addColorStop(0, d.color + '33'); gr.addColorStop(.7, d.color + '14'); gr.addColorStop(1, d.color + '00'); c.globalAlpha = 1; c.fillStyle = gr; c.beginPath(); c.arc(cx, cy, rr * br, 0, 7); c.fill(); }
+  // 곡선 연결: 두 점 사이를 살짝 휘게 한다. 입자도 같은 곡선을 따른다
+  const ctl = l => { const mx = (l.a.sx + l.b.sx) / 2, my = (l.a.sy + l.b.sy) / 2; if (!gx.curve) return [mx, my]; const dx = l.b.sx - l.a.sx, dy = l.b.sy - l.a.sy, s = (l.ph > .5 ? 1 : -1) * .16; return [mx - dy * s, my + dx * s]; };
+  const qp = (l, u, C) => [(1 - u) * (1 - u) * l.a.sx + 2 * (1 - u) * u * C[0] + u * u * l.b.sx, (1 - u) * (1 - u) * l.a.sy + 2 * (1 - u) * u * C[1] + u * u * l.b.sy];
   const linkOn = l => path ? path.edges.has(l.key) : !hl || (hl.has(l.a.id) && hl.has(l.b.id) && (gx.depth > 1 || l.a.id === id || l.b.id === id));
 
   for (const l of gx.VL) {
-    const on = linkOn(l);
-    c.globalAlpha = on ? (hl ? .95 : .26) : .035; c.strokeStyle = LINKT[l.type][1]; c.lineWidth = on && hl ? (path ? 2.6 : 1.8) : 1;
-    c.beginPath(); c.moveTo(l.a.sx, l.a.sy); c.lineTo(l.b.sx, l.b.sy); c.stroke();
+    if (!vis(l.a) || !vis(l.b)) continue;
+    const on = linkOn(l), C = ctl(l); l.C = C;
+    // 파동이 지나가는 연결은 잠깐 밝아진다
+    const wa = wv && wv.d.has(l.a.id) && wv.d.has(l.b.id) ? Math.max(0, 1 - Math.abs(wt - Math.max(wv.d.get(l.a.id), wv.d.get(l.b.id)) * .28 - .1) * 2.4) : 0;
+    c.globalAlpha = Math.min(1, (on ? (hl ? .95 : .26) : .035) + wa * .8); c.strokeStyle = wa > .3 ? '#fff' : LINKT[l.type][1]; c.lineWidth = (on && hl ? (path ? 2.6 : 1.8) : 1) + wa * 2;
+    if (l.type === 'gen' && !REDUCE && on) { c.setLineDash([5, 5]); c.lineDashOffset = -t * 18; }
+    c.beginPath(); c.moveTo(l.a.sx, l.a.sy); c.quadraticCurveTo(C[0], C[1], l.b.sx, l.b.sy); c.stroke(); c.setLineDash([]);
   }
   // 연결을 따라 흐르는 입자: 지식이 이동하는 방향감을 준다
   if (!REDUCE) for (const l of gx.VL) {
-    const on = linkOn(l); if (hl && !on) continue;
+    if (!vis(l.a) || !vis(l.b)) continue; const on = linkOn(l); if (hl && !on) continue;
     const hot = hl && on, n = hot ? 2 : 1;
     for (let i = 0; i < n; i++) {
       const u = (t * (hot ? (path ? .7 : .42) : .11) + l.ph + i / n) % 1;
       c.globalAlpha = (hot ? 1 : .55) * Math.sin(u * Math.PI); c.fillStyle = hot ? '#fff' : LINKT[l.type][1];
-      c.beginPath(); c.arc(l.a.sx + (l.b.sx - l.a.sx) * u, l.a.sy + (l.b.sy - l.a.sy) * u, hot ? 2.6 : 1.5, 0, 7); c.fill();
+      const P = qp(l, u, l.C || ctl(l)); c.beginPath(); c.arc(P[0], P[1], hot ? 2.6 : 1.5, 0, 7); c.fill();
     }
   }
-  c.textAlign = 'center'; c.font = '11px Pretendard, "Malgun Gothic", sans-serif';
+  c.textAlign = 'center'; c.font = `${gx.lsize}px Pretendard, "Malgun Gothic", sans-serif`;
   for (const n of gx.V) {
+    if (!vis(n)) continue;
     const on = !hl || hl.has(n.id), age = n.born ? (now - n.born) / 650 : 1, grow = age >= 1 ? 1 : 1 + 2.7 * Math.pow(age - 1, 3) + 1.7 * Math.pow(age - 1, 2);
-    const r = n.r * rs * Math.max(.05, grow), col = n.col, hit = q && gLabel(n.it).toLowerCase().includes(q), a0 = on ? 1 : .1;
+    const r = n.r * rs * gx.nscale * (n.hs || 1) * Math.max(.05, grow), col = n.col, hit = q && gLabel(n.it).toLowerCase().includes(q), a0 = on ? 1 : .1;
     if (n.born && now - n.born < 1100) { const u = (now - n.born) / 1100; c.globalAlpha = (1 - u) * .7 * a0; c.strokeStyle = col; c.lineWidth = 2; c.beginPath(); c.arc(n.sx, n.sy, r + u * 34, 0, 7); c.stroke(); }
     if ((n.deg >= 7 || hit) && on) { c.globalAlpha = (hit ? .3 : .13) + .06 * Math.sin(t * 2 + n.ph); c.fillStyle = hit ? '#FFE082' : col; c.beginPath(); c.arc(n.sx, n.sy, r * 2.3 + 3, 0, 7); c.fill(); }
     c.globalAlpha = a0; c.beginPath(); c.arc(n.sx, n.sy, r, 0, 7);
-    if (n.it.kind === 'o') { c.fillStyle = col; c.fill(); } else { c.fillStyle = '#1B2238'; c.fill(); c.lineWidth = 2.6; c.strokeStyle = col; c.stroke(); }
+    if (n.it.kind === 'o') { c.fillStyle = col; c.fill(); } else { c.fillStyle = TH.hole; c.fill(); c.lineWidth = 2.6; c.strokeStyle = col; c.stroke(); }
+    if (wv && wv.d.has(n.id)) { const u = (wt - wv.d.get(n.id) * .28) / .9; if (u > 0 && u < 1) { c.globalAlpha = (1 - u) * .9; c.strokeStyle = wv.d.get(n.id) ? col : '#fff'; c.lineWidth = 2.4; c.beginPath(); c.arc(n.sx, n.sy, r + 3 + u * 26, 0, 7); c.stroke(); } }
     if (n.id === gx.sel || n.id === gx.hover) {
-      c.beginPath(); c.arc(n.sx, n.sy, r + 4, 0, 7); c.lineWidth = 2; c.strokeStyle = '#fff'; c.stroke();
+      c.globalAlpha = a0; c.beginPath(); c.arc(n.sx, n.sy, r + 4, 0, 7); c.lineWidth = 2; c.strokeStyle = TH.water; c.stroke();
       if (n.id === gx.sel && !REDUCE) { const u = (t * .8) % 1; c.globalAlpha = (1 - u) * .8; c.beginPath(); c.arc(n.sx, n.sy, r + 4 + u * 22, 0, 7); c.stroke(); }
     }
-    const la = hl ? (on ? 1 : 0) : hit ? 1 : Math.max(n.deg >= 7 ? .8 : 0, Math.min(1, (k - 1.05) / .5));
-    if (la > .02 && grow > .6) { const s = gLabel(n.it); c.globalAlpha = la; c.fillStyle = '#E6EBF5'; c.fillText(s.length > 16 ? s.slice(0, 15) + '…' : s, n.sx, n.sy + r + 13); }
+    const la = gx.labels === 'off' ? (n.id === gx.hover || n.id === gx.sel ? 1 : 0) : gx.labels === 'all' ? (on ? 1 : .15) : hl ? (on ? 1 : 0) : hit ? 1 : Math.max(n.deg >= 7 ? .8 : 0, Math.min(1, (k - 1.05) / .5));
+    if (la > .02 && grow > .6) { const s = gLabel(n.it); c.globalAlpha = la; c.fillStyle = TH.label; c.fillText(s.length > 16 ? s.slice(0, 15) + '…' : s, n.sx, n.sy + r + gx.lsize + 2); }
   }
-  if (gx.playing || gx.vy < 2026) { c.globalAlpha = .2; c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = '700 54px Pretendard, sans-serif'; c.fillText(gx.vy, 22, 64); }
+  if (gx.playing || gx.vy < 2026) { c.globalAlpha = .2; c.fillStyle = TH.water; c.textAlign = 'left'; c.font = '700 54px Pretendard, sans-serif'; c.fillText(gx.vy, 22, 64); }
   c.globalAlpha = 1;
 };
 const gBtn = () => { const b = $('#gplay'); if (b) b.textContent = gx.playing ? '❚❚ 일시정지' : gx.vy >= 2026 ? '▶ 50년 성장 재생' : '▶ 이어서 재생'; };
@@ -141,7 +176,7 @@ const gLoop = now => {
 };
 const gAt = e => {
   const b = gx.cv.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top; let best = null, bd = 1e9;
-  for (const n of gx.V) { const d = Math.hypot(n.sx - mx, n.sy - my); if (d < n.r * 1.7 + 6 && d < bd) { best = n; bd = d; } }
+  const eg = gEgo(); for (const n of gx.V) { if (eg && !eg.has(n.id)) continue; const d = Math.hypot(n.sx - mx, n.sy - my); if (d < n.r * gx.nscale * 1.7 + 6 && d < bd) { best = n; bd = d; } }
   return best;
 };
 const gPanel = () => {
@@ -184,7 +219,7 @@ const mountGraph = () => {
   if (fresh) { gx.alpha = 1; gx.auto = true; if (REDUCE) { for (let i = 0; i < 300; i++) gTick(); gx.tf = gFitTarget(); } } else gx.alpha = Math.max(gx.alpha, .2);
 
   let drag = null; const hands = () => { gx.auto = false; gx.cam = null; };
-  cv.onpointerdown = e => { const n = gAt(e); drag = { n, x: e.clientX, y: e.clientY, moved: 0 }; if (n) n.fixed = true; cv.setPointerCapture(e.pointerId); };
+  cv.onpointerdown = e => { gTourStop(); const n = gAt(e); drag = { n, x: e.clientX, y: e.clientY, moved: 0 }; if (n) n.fixed = true; cv.setPointerCapture(e.pointerId); };
   cv.onpointermove = e => {
     if (drag) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved += Math.abs(dx) + Math.abs(dy); drag.x = e.clientX; drag.y = e.clientY;
@@ -199,7 +234,7 @@ const mountGraph = () => {
     if (!drag) return; if (drag.n) drag.n.fixed = false;
     if (drag.moved < 5) {
       if (gx.pathMode && drag.n && gx.sel && drag.n.id !== gx.sel) { gx.path = gPath(gx.sel, drag.n.id); gx.pathMode = false; if (!gx.path) gx.sel = drag.n.id; }
-      else { gx.sel = drag.n ? drag.n.id : null; gx.path = null; gx.pathMode = false; }
+      else { gx.sel = drag.n ? drag.n.id : null; gx.path = null; gx.pathMode = false; gWave(gx.sel); if (gx.ego) { gx.auto = false; gx.cam = gFitTarget(); } }
       gHl(); gPanel();
     }
     drag = null;
@@ -207,7 +242,7 @@ const mountGraph = () => {
   cv.onpointerleave = () => { if (!drag && gx.hover) { gx.hover = null; gHl(); } };
   cv.ondblclick = e => { const n = gAt(e); if (n) openModal(n.id); };
   cv.onwheel = e => {
-    e.preventDefault(); hands();
+    e.preventDefault(); hands(); gTourStop();
     const b = cv.getBoundingClientRect(), mx = e.clientX - b.left - b.width / 2, my = e.clientY - b.top - b.height / 2, k0 = gx.tf.k, k = Math.max(.35, Math.min(4, k0 * (e.deltaY < 0 ? 1.12 : .89)));
     gx.tf.x = mx - (mx - gx.tf.x) * k / k0; gx.tf.y = my - (my - gx.tf.y) * k / k0; gx.tf.k = k;
   };
@@ -228,7 +263,16 @@ R.network = () => {
   <div class="row c4">${[[nodes.length, '개', `노드 · 성과 ${no} + 연구자 ${np}`], [links.length, '개', `연결 · 영역 간 ${cross}개`], [avg, '', '노드당 평균 연결'], [iso, '개', '연결 없는 노드']].map(([n, u, l], i) => `<div class="tile"><div class="blob ${G[i]} ${i % 2 ? 'b2' : ''}">${['노드', '연결', '평균', '고립'][i]}</div><div class="n">${n}<small> ${u}</small></div><div class="l">${l}</div></div>`).join('')}</div>
   <div class="toolbar" style="margin-bottom:12px">
     <input class="field" type="search" placeholder="성과명·분야 검색 (그래프에서 강조)" value="${esc(gx.q)}" data-gq aria-label="그래프 검색" style="flex:1 1 220px">
-    <button class="btn" data-act="gfit">화면 맞춤</button><button class="btn" data-act="grelayout">다시 배치</button><button class="btn" data-act="gfull">전체 화면</button><button class="btn" data-act="gpng">PNG 저장</button>
+    <button class="btn" data-act="gfit">화면 맞춤</button><button class="btn" data-act="grelayout">다시 배치</button><button class="btn ${gx.tour ? 'pri' : ''}" data-act="gtour">${gx.tour ? '❚❚ 투어 멈춤' : '▶ 허브 투어'}</button><button class="btn" data-act="gfull">전체 화면</button><button class="btn" data-act="gpng">PNG 저장</button>
+  </div>
+  <div class="gviewbar">
+    <div><span>배치</span><div class="chips">${[['force', '힘 배치'], ['ring', '원형(영역별)'], ['time', '시간축'], ['domain', '영역 군집']].map(([v, l]) => tg(gx.layout === v, 'glayout', v, l)).join('')}</div></div>
+    <div><span>표현</span><div class="chips">${tg(gx.curve, 'gopt', 'curve', '곡선 연결')}${tg(gx.clouds, 'gopt', 'clouds', '영역 구름')}${tg(gx.ego, 'gopt', 'ego', '선택 이웃만')}${tg(gx.theme === 'light', 'gopt', 'theme', '밝은 배경')}<span class="mute sm" style="align-self:center;margin-left:6px">라벨</span>${[['auto', '자동'], ['all', '모두'], ['off', '끄기']].map(([v, l]) => tg(gx.labels === v, 'glabels', v, l)).join('')}</div></div>
+    <div><span>크기</span><div class="gsizes">
+      <label>그래프 높이<input type="range" min="360" max="1100" step="20" value="${gx.h}" data-gsz="h" aria-label="그래프 높이"><b id="gsz-h">${gx.h}px</b></label>
+      <label>노드 크기<input type="range" min="0.5" max="2.2" step="0.1" value="${gx.nscale}" data-gsz="nscale" aria-label="노드 크기"><b id="gsz-nscale">${Math.round(gx.nscale * 100)}%</b></label>
+      <label>글자 크기<input type="range" min="9" max="18" step="1" value="${gx.lsize}" data-gsz="lsize" aria-label="글자 크기"><b id="gsz-lsize">${gx.lsize}px</b></label>
+      <div class="chips">${[['S', 440], ['M', 640], ['L', 820], ['XL', 1000]].map(([l, v]) => `<button class="chip ${gx.h === v ? 'on' : ''}" data-act="gheight" data-v="${v}">${l}</button>`).join('')}<button class="chip" data-act="gszreset">기본값</button></div></div></div>
   </div>
   <div class="chips" style="margin-bottom:10px">
     ${tg(gx.show.o, 'gshow', 'o', '대표 성과 ●')}${tg(gx.show.p, 'gshow', 'p', '대표 연구자 ○')}
@@ -240,7 +284,8 @@ R.network = () => {
     <span style="width:10px"></span><span class="mute sm" style="align-self:center">크기</span>${[['deg', '연결 수'], ['score', '성과 점수'], ['roi', '투자 대비 성과 지수']].map(([v, l]) => tg(gx.size === v, 'gsizem', v, l)).join('')}</div>
   <div class="row gcols">
     <section class="slide" style="padding:14px">
-      <div class="graph-wrap"><canvas id="graph" aria-label="대표 성과와 대표 연구자의 연구 네트워크 그래프"></canvas>
+      <div class="graph-wrap ${gx.theme}" style="--gh:${gx.h}px"><canvas id="graph" aria-label="대표 성과와 대표 연구자의 연구 네트워크 그래프"></canvas>
+        <div class="gzoom"><button data-act="gzoom" data-v="1.25" aria-label="확대">＋</button><button data-act="gzoom" data-v="0.8" aria-label="축소">－</button><button data-act="gfit" aria-label="화면 맞춤">⤢</button></div>
         <div class="graph-hint">끌기: 이동 · 휠: 확대 · 노드 끌기: 재배치 · 클릭: 선택 · 더블클릭: 상세</div>
         <div class="graph-time"><button class="btn" id="gplay" data-act="gplay">▶ 50년 성장 재생</button><input type="range" min="1977" max="2026" value="${Math.floor(gx.year)}" data-gyear aria-label="연도"><b id="gyear">${Math.floor(gx.year)}</b><span id="gcount"></span></div></div>
       <div style="padding:4px 10px 6px">${legend(leg)}</div>
@@ -260,3 +305,26 @@ R.network = () => {
   ${slide('연결의 <b>종류</b>', tbl(['연결', '의미', '분석 근거', '수'], Object.entries(LINKT).map(([t, [l, c, d]]) => [`<i class="dot" style="background:${c}"></i>${l}`, d, { tie: '투입-성과 연계 DB (과제 ID·연구자 ID)', co: '공저 네트워크, 공동 과제', gen: '인용 네트워크, 과제-후속과제 연결망', ment: '프로필 DB의 배출 인력' }[t], links.filter(x => x.type === t).length])) +
     '<p class="mute sm mt">성과–연구자 연계는 후보 데이터의 연결이고, 공동연구·계보·사제 관계는 구조를 보여주기 위해 생성한 예시입니다. 실제 분석에서는 인용·공저 네트워크와 과제-후속과제 연결망으로 지식 확산 경로를, 사제·공동연구 네트워크로 연구 생태계의 범위와 다음 세대로의 확산을 측정합니다.</p>' + foot('연구 네트워크'))}`;
 };
+
+/* ---------- 허브 투어·보기 설정·크기 조절 ---------- */
+const gTourStop = () => { if (!gx.tour) return; clearInterval(gx.tour); gx.tour = null; const b = $('[data-act="gtour"]'); if (b) { b.textContent = '▶ 허브 투어'; b.classList.remove('pri'); } };
+const gTourStep = () => {
+  const hubs = [...gx.V].sort((a, b) => (gx.vadj[b.id]?.size || 0) - (gx.vadj[a.id]?.size || 0)).slice(0, 10); if (!hubs.length) return gTourStop();
+  gx.ti = ((gx.ti ?? -1) + 1) % hubs.length; const n = hubs[gx.ti], k = Math.max(1.35, gx.tf.k);
+  gx.sel = n.id; gx.path = null; gx.auto = false; gx.cam = { k, x: -n.x * k, y: -n.y * k }; gWave(n.id); gHl(); gPanel(); applyLang($('#gpanel'));
+};
+const gApplySize = () => { const w = $('.graph-wrap'); if (w) w.style.setProperty('--gh', `${gx.h}px`); LS.set('nrf50.gh', gx.h); LS.set('nrf50.gns', gx.nscale); LS.set('nrf50.gls', gx.lsize); };
+document.addEventListener('input', e => {
+  const k = e.target.dataset?.gsz; if (!k) return;
+  gx[k] = +e.target.value; const lb = $(`#gsz-${k}`); if (lb) lb.textContent = k === 'h' ? `${gx.h}px` : k === 'nscale' ? `${Math.round(gx.nscale * 100)}%` : `${gx.lsize}px`;
+  gApplySize(); if (k === 'h' && gx.auto !== false) gx.auto = true;
+});
+Object.assign(ACT, {
+  glayout: v => { gx.layout = v; gx.alpha = 1; gx.auto = true; gTourStop(); const b = document.querySelectorAll('[data-act="glayout"]'); b.forEach(x => x.classList.toggle('on', x.dataset.v === v)); },
+  gopt: (v, t) => { if (v === 'theme') gx.theme = gx.theme === 'dark' ? 'light' : 'dark'; else gx[v] = !gx[v]; t.classList.toggle('on', v === 'theme' ? gx.theme === 'light' : gx[v]); $('.graph-wrap')?.classList.toggle('light', gx.theme === 'light'); $('.graph-wrap')?.classList.toggle('dark', gx.theme === 'dark'); if (v === 'ego') { gx.auto = false; gx.cam = gFitTarget(); } },
+  glabels: v => { gx.labels = v; document.querySelectorAll('[data-act="glabels"]').forEach(x => x.classList.toggle('on', x.dataset.v === v)); },
+  gheight: v => { gx.h = +v; gApplySize(); render(); },
+  gszreset: () => { gx.h = 640; gx.nscale = 1; gx.lsize = 11; gApplySize(); render(); },
+  gzoom: v => { gTourStop(); gx.auto = false; const k0 = gx.tf.k, k = Math.max(.35, Math.min(4, k0 * +v)); gx.cam = { k, x: gx.tf.x * k / k0, y: gx.tf.y * k / k0 }; },
+  gtour: () => { if (gx.tour) return gTourStop(); gTourStep(); gx.tour = setInterval(() => { if (!gx.cv?.isConnected) return gTourStop(); gTourStep(); }, 4200); const b = $('[data-act="gtour"]'); if (b) { b.textContent = '❚❚ 투어 멈춤'; b.classList.add('pri'); } },
+});
