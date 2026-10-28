@@ -630,5 +630,5 @@ pre.code{background:#27365A;color:#E9ECF1;border-radius:14px;padding:14px 16px;f
 .kprev{border-radius:20px;overflow:hidden;background:var(--bg);box-shadow:0 10px 30px rgba(39,54,90,.18);border:6px solid #27365A}
 .kp-top{display:flex;gap:10px;align-items:center;padding:8px 14px;background:#fff;font-size:12.5px}.kp-top b{flex:1}.kp-top span{color:var(--mute);font-size:12px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kp-bar{height:4px;background:#E3E7EE}.kp-bar i{display:block;height:100%;width:0;background:var(--teal)}
-.kp-stage{position:relative;overflow:hidden;height:420px;padding:0}.kp-inner{position:absolute;left:0;top:0;width:1200px;transform-origin:0 0;padding:20px}
+.kp-stage{position:relative;overflow:hidden;height:420px;padding:0;transition:height .35s ease}.kp-inner{position:absolute;left:0;top:0;width:1200px;transform-origin:0 0;padding:20px}
 .kp-thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.kp-th{width:30px;height:30px;border-radius:9px;font-size:11px;font-weight:700;color:#fff;background:var(--c);opacity:.55;transition:.2s}.kp-th.on,.kp-th:hover{opacity:1;transform:translateY(-2px);box-shadow:0 4px 10px rgba(39,54,90,.25)}

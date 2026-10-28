@@ -118,11 +118,11 @@ SV.kiosk = () => {
       <div class="kp-thumbs">${L.slice(0, 60).map((it, i) => `<button class="kp-th" data-act="kpgo" data-v="${i}" style="--c:${dom(it.domain).color}" title="${esc(nameOf2(it))}">${i + 1}</button>`).join('')}</div>` : '<p class="mute sm mt">전시할 항목이 없습니다. 대상과 범위를 바꿔 보세요.</p>'}
   </section>`;
 };
-// 미리보기: 실제 전시 화면(1200px)을 축소해 같은 순서·간격으로 돌린다
+// 미리보기: 실제 전시 화면(1200px)을 축소해 같은 순서·간격으로 돌린다(포스터 전체가 보이도록 높이를 맞춤)
 const kp = { i: 0, timer: null, paused: false };
 // 화면보다 긴 포스터는 넘김 간격 동안 천천히 아래로 훑어 내려간다
 const autoScroll = (inn, k, h, sec) => { inn.getAnimations().forEach(a => a.cancel()); const dist = Math.max(0, inn.scrollHeight - h / k); inn.style.transform = `scale(${k})`; if (!dist || REDUCE) return; inn.animate([{ transform: `scale(${k}) translateY(0)` }, { transform: `scale(${k}) translateY(-${dist}px)` }], { duration: Math.max(3000, (sec - 4) * 1000), delay: 2500, fill: 'forwards', easing: 'ease-in-out' }); };
-const kpFit = (scroll) => { const st = $('#kprev .kp-stage'), inn = st?.firstElementChild; if (!inn) return; const k = st.clientWidth / 1200, h = Math.min(inn.scrollHeight * k, 560); st.style.height = `${h}px`; if (scroll) autoScroll(inn, k, h, kp.paused ? 9999 : state.svc.kiosk.sec); else if (!inn.getAnimations().length) inn.style.transform = `scale(${k})`; };
+const kpFit = (scroll) => { const st = $('#kprev .kp-stage'), inn = st?.firstElementChild; if (!inn) return; const k = st.clientWidth / 1200, h = inn.scrollHeight * k; st.style.height = `${h}px`; if (scroll) autoScroll(inn, k, h, kp.paused ? 9999 : state.svc.kiosk.sec); else if (!inn.getAnimations().length) inn.style.transform = `scale(${k})`; };
 const kpShow = () => {
   const L = kioskList(), el = $('#kprev'); if (!el || !L.length) return; kp.i = (kp.i + L.length) % L.length; const it = L[kp.i];
   const inn = el.querySelector('.kp-inner'); inn.innerHTML = it.kind === 'o' ? infoPoster(it) : pinfoPoster(it); kpFit(!kp.paused); infoPlay(inn, true);
