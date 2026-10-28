@@ -621,3 +621,14 @@ pre.code{background:#27365A;color:#E9ECF1;border-radius:14px;padding:14px 16px;f
 @media (prefers-reduced-motion:reduce){.poster.mo .sp-rank li,.poster.mo .sp-pop{opacity:1;transform:none;transition:none}.poster.mo .sp-area{opacity:.16}}
 @media print{.poster.mo .sp-rank li,.poster.mo .sp-pop{opacity:1;transform:none}.poster.mo .sp-area{opacity:.16}}
 .sp-poster .p-three .p-bars p{grid-template-columns:104px 1fr 66px}
+/* 전시 모드 설정·미리보기 (v1.12) */
+.kset{display:grid;gap:8px;margin-top:12px;padding:12px 14px;border-radius:18px;box-shadow:var(--in-s)}.kset>div{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.kset>div>span{flex:0 0 70px;font-size:11.5px;font-weight:700;color:var(--mute)}.kset .chips{gap:6px}.kset .chip{padding:6px 12px;font-size:12px}
+.kpick{margin-top:12px;padding:12px;border-radius:16px;background:#fff;box-shadow:0 3px 12px rgba(39,54,90,.07)}
+.kpick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px;max-height:300px;overflow:auto;padding:2px}
+.kpick-grid label{display:flex;align-items:center;gap:7px;font-size:12px;padding:6px 10px;border-radius:10px;box-shadow:var(--in-s);cursor:pointer;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpick-grid label.on{background:#E6F6F1;font-weight:700}.kpick-grid i{flex:0 0 8px;height:8px;border-radius:50%}
+.kgo{font-size:14px;padding:12px 22px}
+.kprev{border-radius:20px;overflow:hidden;background:var(--bg);box-shadow:0 10px 30px rgba(39,54,90,.18);border:6px solid #27365A}
+.kp-top{display:flex;gap:10px;align-items:center;padding:8px 14px;background:#fff;font-size:12.5px}.kp-top b{flex:1}.kp-top span{color:var(--mute);font-size:12px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kp-bar{height:4px;background:#E3E7EE}.kp-bar i{display:block;height:100%;width:0;background:var(--teal)}
+.kp-stage{position:relative;overflow:hidden;height:420px;padding:0}.kp-inner{position:absolute;left:0;top:0;width:1200px;transform-origin:0 0;padding:20px}
+.kp-thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.kp-th{width:30px;height:30px;border-radius:9px;font-size:11px;font-weight:700;color:#fff;background:var(--c);opacity:.55;transition:.2s}.kp-th.on,.kp-th:hover{opacity:1;transform:translateY(-2px);box-shadow:0 4px 10px rgba(39,54,90,.25)}

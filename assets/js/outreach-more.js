@@ -103,17 +103,18 @@ ${L.map((it, i) => bookPage(it, L.filter(x => x.kind === it.kind).indexOf(it))).
 OUT.book = () => {
   const B = state.book, L = bookItems();
   return `
-  ${spec('성과·인물 중심', [['보여주는 것', '확정된 대표성과·대표 연구자를 표준 양식의 사례집으로 일괄 조판'], ['구성', '표지 · 차례 · 항목마다 한 쪽 이상(영역 색 띠, 핵심 숫자 4개, 영향경로·성장 궤적 표, 이야기, 근거 목록, 출처)'], ['이야기 본문', '원고 초안의 상태가 "검토 중"·"확정"이면 그 원고를, 아니면 사실 목록으로 만든 요약을 넣습니다.'], ['출력', '인쇄 창에서 PDF로 저장(A4) · 단독 HTML 내려받기. 한글(HWPX) 변환은 HTML을 한글에서 열어 저장하거나, 확정 후 별도로 일괄 변환해 드릴 수 있습니다.']])}
+  ${spec('성과·인물 중심', [['보여주는 것', '확정된 대표성과·대표 연구자를 표준 양식의 사례집으로 일괄 조판'], ['구성', '표지 · 차례 · 항목마다 한 쪽 이상(영역 색 띠, 핵심 숫자 4개, 영향경로·성장 궤적 표, 이야기, 근거 목록, 출처)'], ['이야기 본문', '원고 초안의 상태가 "검토 중"·"확정"이면 그 원고를, 아니면 사실 목록으로 만든 요약을 넣습니다.'], ['출력', '한글(HWPX) 문서 · 인쇄 창에서 PDF로 저장(A4) · 단독 HTML. HWPX는 표지·차례·항목별 새 쪽(핵심 숫자 표, 영향경로·성장 궤적 표, 이야기, 관련 성과 표, 근거)으로 구성되며 한글에서 바로 열어 고칠 수 있습니다.']])}
   <section class="slide"><div class="toolbar" style="margin-bottom:10px"><h2 style="flex:1 1 220px">사례집 <b>조판</b> <span class="mute sm">${L.length}편</span></h2>
     <select class="field" data-chg="bkscope" style="flex:0 1 170px">${[['sel', '최종선정만'], ['top', '점수 상위']].map(([v, l]) => `<option value="${v}" ${B.scope === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     ${B.scope === 'top' ? `<select class="field" data-chg="bkn" style="flex:0 1 110px">${[5, 10, 20, 50].map(n => `<option value="${n}" ${B.n === n ? 'selected' : ''}>각 ${n}편</option>`).join('')}</select>` : ''}
     <select class="field" data-chg="bkkinds" style="flex:0 1 160px">${[['op', '성과 + 연구자'], ['o', '대표성과만'], ['p', '대표 연구자만']].map(([v, l]) => `<option value="${v}" ${B.kinds === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-    <button class="btn pri" data-act="bookprint" ${L.length ? '' : 'disabled'}>인쇄 · PDF</button><button class="btn" data-act="bookhtml" ${L.length ? '' : 'disabled'}>HTML 내려받기</button></div>
+    <button class="btn pri" data-act="bookprint" ${L.length ? '' : 'disabled'}>인쇄 · PDF</button><button class="btn pri" data-act="bookhwpx" ${L.length ? '' : 'disabled'}>한글(HWPX) 내려받기</button><button class="btn" data-act="bookhtml" ${L.length ? '' : 'disabled'}>HTML 내려받기</button></div>
     ${L.length ? `<div class="bookprev">${bookPage(L[0], 0)}</div><p class="mute sm mt">첫 쪽 미리보기입니다. 원고가 확정된 항목: ${L.filter(it => bookStory(it)).length} / ${L.length}</p>` : '<p class="mute sm mt">조건에 맞는 항목이 없습니다. 최종선정이 없으면 "점수 상위"로 바꿔 보세요.</p>'}
   </section>`;
 };
 Object.assign(ACT, {
   bkscope: v => { state.book.scope = v; render(); }, bkn: v => { state.book.n = +v; render(); }, bkkinds: v => { state.book.kinds = v; render(); },
   bookprint: () => { const w = window.open('', '_blank'); if (!w) return toast('팝업이 막혀 있습니다. HTML 내려받기를 쓰세요.'); w.document.write(bookHtml()); w.document.close(); setTimeout(() => { try { w.focus(); w.print(); } catch (e) { /* 사용자가 직접 인쇄 */ } }, 800); },
+  bookhwpx: async (v, t) => { const l = t.textContent; t.textContent = '만드는 중…'; try { download(`대한민국연구50년_사례집_${new Date().toISOString().slice(0, 10)}.hwpx`, new Blob([await bookHwpx(bookItems())], { type: 'application/hwp+zip' })); t.textContent = '내려받기 완료'; } catch (e) { console.error(e); t.textContent = '만들기 실패'; } setTimeout(() => { if (t.isConnected) t.textContent = l; }, 2500); },
   bookhtml: () => download(`대한민국연구50년_사례집_${new Date().toISOString().slice(0, 10)}.html`, new Blob([bookHtml()], { type: 'text/html' })),
 });
